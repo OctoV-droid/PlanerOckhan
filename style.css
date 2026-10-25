@@ -127,3 +127,49 @@ input:focus,select:focus,textarea:focus,button:focus-visible{outline-color:#d6a7
 .agenda-type.academic,.agenda-type.session{color:#cbb8eb;background:#342a49}
 @media(max-width:1120px){.session-grid{grid-template-columns:1fr}}
 @media(max-width:720px){.academic-card{padding:15px}.academic-bottom{flex-wrap:wrap}.academic-bottom select{max-width:none;flex:1}.session-card{padding:13px}}
+
+
+/* v2.3 — iPhone, iPad и установка на главный экран Safari */
+html { -webkit-text-size-adjust: 100%; text-size-adjust: 100%; }
+body { min-height: 100svh; overflow-x: hidden; -webkit-tap-highlight-color: transparent; }
+.app-shell { min-height: 100svh; }
+button, a, input, select, textarea { touch-action: manipulation; }
+button, input, select, textarea { -webkit-appearance: none; appearance: none; }
+input[type="checkbox"] { -webkit-appearance: checkbox; appearance: checkbox; }
+input[type="date"] { min-width:0; }
+input[type="number"] { min-width:0; }
+select { -webkit-appearance: auto; appearance: auto; }
+.editor-dialog { overscroll-behavior: contain; -webkit-overflow-scrolling: touch; }
+.connection-notice { position:fixed; bottom: max(13px, env(safe-area-inset-bottom)); left: max(13px, env(safe-area-inset-left)); right: max(13px, env(safe-area-inset-right)); z-index:100; text-align:center; background:#342a20; color:#ffe2a1; border:1px solid #795b33; border-radius:12px; padding:12px; box-shadow:var(--shadow); font-size:12px; }
+.connection-notice[hidden] { display:none; }
+.install-card { margin-top:20px; padding:20px; border:1px solid #514432; border-radius:var(--radius); background:linear-gradient(130deg,#222635,#1b202b); }
+.install-card h2 { margin-bottom:8px; }
+.install-card p { color:var(--muted); font-size:13px; line-height:1.6; }
+.install-card ol { padding-left:20px; margin:12px 0; color:var(--text); font-size:13px; }
+.install-card li+li { margin-top:6px; }
+.install-card strong { color:#e0b65e; }
+.install-card .subnote { margin-top:10px; }
+@media (max-width:720px) {
+  body, .app-shell { width:100%; }
+  .sidebar { padding-top: max(12px, env(safe-area-inset-top)); padding-left: max(12px, env(safe-area-inset-left)); padding-right: max(12px, env(safe-area-inset-right)); }
+  .topbar { padding-left: max(15px, env(safe-area-inset-left)); padding-right: max(15px, env(safe-area-inset-right)); }
+  main { padding-left: max(15px, env(safe-area-inset-left)); padding-right: max(15px, env(safe-area-inset-right)); padding-bottom: max(55px, calc(30px + env(safe-area-inset-bottom))); }
+  .footer { padding-left: max(16px, env(safe-area-inset-left)); padding-right: max(16px, env(safe-area-inset-right)); padding-bottom: max(15px, env(safe-area-inset-bottom)); }
+  .nav-item { min-height:44px; touch-action:manipulation; }
+  .sidebar-bottom .nav-item { min-height:44px; }
+  .btn, .icon-btn { min-height:44px; }
+  .topbar .btn-small { min-height:44px; }
+  .calendar-controls .btn-small { min-height:44px; }
+  .post-controls select { min-height:44px; }
+  .post-controls .icon-btn { min-width:40px; }
+  .editor-dialog { max-height: calc(100dvh - 18px - env(safe-area-inset-top) - env(safe-area-inset-bottom)); }
+  .dialog-actions { position:sticky; bottom:0; z-index:2; background:#19202d; padding-bottom:max(17px,env(safe-area-inset-bottom)); }
+  #toast { bottom:max(22px,calc(12px + env(safe-area-inset-bottom))); left: max(16px, env(safe-area-inset-left)); right:max(16px,env(safe-area-inset-right)); }
+}
+/* Отключение автозума Safari при фокусе на текстовых полях (шрифт >=16px). */
+@media (hover:none) and (pointer:coarse) {
+  input, select, textarea, .form-group input, .form-group select, .form-group textarea, .field-row input, .toolbar input, .toolbar select, .post-controls select { font-size:16px; }
+}
+@media (display-mode: standalone) {
+  .sidebar { padding-top:max(15px, env(safe-area-inset-top)); }
+}

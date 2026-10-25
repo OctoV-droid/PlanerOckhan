@@ -20,5 +20,16 @@
       "type": "image/png",
       "purpose": "any"
     }
+  ],
+  "id": "./",
+  "lang": "ru",
+  "dir": "ltr",
+  "categories": [
+    "productivity",
+    "education"
+  ],
+  "orientation": "any",
+  "display_override": [
+    "standalone"
   ]
 }
