@@ -5,22 +5,23 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="theme-color" content="#11151f">
   <meta name="description" content="Личный творческий планер: задачи, проекты и контент-календарь.">
-  <title>Ателье — творческий планер</title>
-  <link rel="stylesheet" href="style.css">
-  <script src="app.js" defer></script>
+  <title>МАСТЕРСКАЯ — творческий планер</title>
+  <link rel="stylesheet" href="style.css?v=2">
+  <script src="app.js?v=2" defer></script>
 </head>
 <body>
   <div class="app-shell">
     <aside class="sidebar">
       <div class="brand">
         <div class="brand-icon">✳</div>
-        <div><div class="brand-name">АТЕЛЬЕ<span class="brand-dot">.</span></div><div class="brand-sub">творческий планер</div></div>
+        <div><div class="brand-name">МАСТЕРСКАЯ<span class="brand-dot">.</span></div><div class="brand-sub">творческий планер</div></div>
       </div>
       <div class="side-label">РАБОЧЕЕ ПРОСТРАНСТВО</div>
       <nav class="nav" aria-label="Навигация">
         <button class="nav-item active" data-nav="overview"><span class="nav-ico">◈</span> Обзор</button>
         <button class="nav-item" data-nav="tasks"><span class="nav-ico">☑</span> Задачи</button>
         <button class="nav-item" data-nav="content"><span class="nav-ico">▦</span> Публикации</button>
+        <button class="nav-item" data-nav="study"><span class="nav-ico">✎</span> Учёба</button>
         <button class="nav-item" data-nav="calendar"><span class="nav-ico">▤</span> Календарь</button>
         <button class="nav-item" data-nav="projects"><span class="nav-ico">◫</span> Проекты</button>
       </nav>
@@ -36,7 +37,7 @@
         <div class="top-right"><span id="today-label"></span><button class="btn btn-accent btn-small" data-action="add-task">+ Новая задача</button></div>
       </header>
       <main id="app" tabindex="-1"></main>
-      <footer class="footer">АТЕЛЬЕ · личный инструмент · локальные данные · <span id="footer-year"></span></footer>
+      <footer class="footer">МАСТЕРСКАЯ · личный инструмент · локальные данные · <span id="footer-year"></span></footer>
     </div>
   </div>
   <dialog id="editor" class="editor-dialog" aria-labelledby="editor-title">
