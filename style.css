@@ -207,3 +207,55 @@ select { -webkit-appearance: auto; appearance: auto; }
 @media(max-width:1080px){.activity-summary{grid-template-columns:repeat(2,minmax(0,1fr));}}
 @media(max-width:720px){.activity-panel {padding:14px;}.activity-summary{gap:8px}.activity-preview{padding:14px}.subtasks-box{padding:10px}.activity-period button{flex:1;}}
 @media(max-width:370px){.activity-summary{grid-template-columns:1fr 1fr}.activity-summary .stat-value{font-size:20px}.subtask-row .icon-btn{padding:2px 3px;min-width:26px}}
+
+/* v2.5: связанные с проектом задачи и ручное упорядочивание */
+.task-order-hint{margin:-7px 0 17px;color:var(--muted);font-size:12px;line-height:1.5}
+.task-card{align-items:flex-start;min-width:0;position:relative;transition:border-color .13s,background .13s}
+.task-card .check{margin-top:8px;flex-shrink:0}
+.task-move-controls{display:flex;align-items:center;gap:2px;flex:0 0 auto;margin-top:0}
+.task-move-controls .icon-btn{min-width:30px;height:35px;padding:3px 5px;font-size:16px;color:#c3aa76;border:1px solid #354050}
+.task-move-controls .icon-btn:hover{background:#373629;border-color:#88734c}
+.task-drag-handle{cursor:grab;touch-action:none;user-select:none;-webkit-user-select:none}
+.task-drag-handle:active{cursor:grabbing}
+.task-card.task-dragging{opacity:.45;border-color:#aa9058}
+.task-card.task-drop-target{border-color:#c69a45;background:#222b38;box-shadow:inset 0 2px #c69a45}
+.task-card.task-focused{outline:2px solid #cfac62;outline-offset:3px;box-shadow:0 0 0 7px #c69a4522}
+.task-card .task-wrap{display:block;min-width:0}
+.task-card .task-actions{position:static;flex-shrink:0}
+.project-back{margin-bottom:20px}
+.project-detail-summary{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px;margin-bottom:16px}
+.project-detail-summary .stat-card{min-width:0}
+.project-progress-panel{margin-bottom:20px}
+.project-task-sections{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:16px;align-items:start}
+.project-section{min-width:0;margin-bottom:0}
+.project-section-count{background:#303a4b;color:#d5c4a0;border-radius:999px;padding:3px 11px;font-size:12px}
+.project-task-row{display:flex;align-items:flex-start;gap:10px;padding:13px 0;border-bottom:1px solid var(--border2);min-width:0}
+.project-task-row:last-child{border-bottom:0}
+.project-task-row .check{width:19px;height:19px;accent-color:#c69a45;margin:3px 0 0;flex-shrink:0}
+.project-task-text{min-width:0;flex:1}
+.project-task-text .row-title.is-done{text-decoration:line-through;opacity:.65}
+.project-task-text .row-sub{line-height:1.6}
+.project-task-actions{display:flex;gap:3px;align-items:center;flex-shrink:0}
+.project-task-actions .btn{white-space:nowrap}
+.project-card .actions-inline .btn{max-width:100%}
+@media(max-width:1220px){.project-task-sections{grid-template-columns:1fr}}
+@media(max-width:720px){
+  .task-card{gap:8px;padding:11px;flex-wrap:wrap}
+  .task-move-controls{gap:3px;order:0;width:100%;justify-content:flex-start}
+  .task-move-controls .icon-btn{min-width:43px;height:41px}
+  .task-card>.check{margin-top:3px;order:1}
+  .task-card>.task-wrap{order:2;flex:1 1 55%}
+  .task-card>.task-actions{order:3}
+  .project-detail-summary{gap:7px}
+  .project-detail-summary .stat-card{padding:13px 10px}
+  .project-detail-summary .stat-value{font-size:23px}
+  .project-section{padding:16px 13px}
+  .project-task-row{flex-wrap:wrap}
+  .project-task-actions{width:100%;justify-content:flex-end}
+  .project-task-actions .btn{min-height:40px}
+}
+@media(max-width:390px){
+  .project-detail-summary .stat-value{font-size:19px}
+  .project-detail-summary .stat-label{font-size:10px}
+  .project-task-row{gap:8px}
+}

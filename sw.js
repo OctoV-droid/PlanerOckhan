@@ -1,5 +1,5 @@
-/* МАСТЕРСКАЯ v2.4 — только статический интерфейс; пользовательские данные не кэшируются. */
-const CACHE_NAME = 'masterskaya-static-v2-4';
+/* МАСТЕРСКАЯ v2.5 — только статический интерфейс; пользовательские данные не кэшируются. */
+const CACHE_NAME = 'masterskaya-static-v2-5';
 const APP_SHELL = [
   './', './index.html', './style.css', './app.js', './pwa.js',
   './site.webmanifest', './favicon.svg', './favicon.ico',
