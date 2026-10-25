@@ -1,0 +1,52 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#11151f">
+  <meta name="description" content="Личный творческий планер: задачи, проекты и контент-календарь.">
+  <title>Ателье — творческий планер</title>
+  <link rel="stylesheet" href="style.css">
+  <script src="app.js" defer></script>
+</head>
+<body>
+  <div class="app-shell">
+    <aside class="sidebar">
+      <div class="brand">
+        <div class="brand-icon">✳</div>
+        <div><div class="brand-name">АТЕЛЬЕ<span class="brand-dot">.</span></div><div class="brand-sub">творческий планер</div></div>
+      </div>
+      <div class="side-label">РАБОЧЕЕ ПРОСТРАНСТВО</div>
+      <nav class="nav" aria-label="Навигация">
+        <button class="nav-item active" data-nav="overview"><span class="nav-ico">◈</span> Обзор</button>
+        <button class="nav-item" data-nav="tasks"><span class="nav-ico">☑</span> Задачи</button>
+        <button class="nav-item" data-nav="content"><span class="nav-ico">▦</span> Публикации</button>
+        <button class="nav-item" data-nav="calendar"><span class="nav-ico">▤</span> Календарь</button>
+        <button class="nav-item" data-nav="projects"><span class="nav-ico">◫</span> Проекты</button>
+      </nav>
+      <div class="sidebar-bottom">
+        <div class="sidebar-note"><span class="note-mark">↗</span><b>Твой темп — твои правила.</b><br>Планер помогает не забывать идеи, а не превращает творчество в ещё одну гонку.</div>
+        <button class="nav-item" data-nav="settings"><span class="nav-ico">⚙</span> Настройки и копия</button>
+        <div class="offline-label">● Данные на этом устройстве</div>
+      </div>
+    </aside>
+    <div class="work-area">
+      <header class="topbar">
+        <div class="breadcrumbs">ЛИЧНОЕ ПРОСТРАНСТВО <span>/</span> <span id="crumb-title">Обзор</span></div>
+        <div class="top-right"><span id="today-label"></span><button class="btn btn-accent btn-small" data-action="add-task">+ Новая задача</button></div>
+      </header>
+      <main id="app" tabindex="-1"></main>
+      <footer class="footer">АТЕЛЬЕ · личный инструмент · локальные данные · <span id="footer-year"></span></footer>
+    </div>
+  </div>
+  <dialog id="editor" class="editor-dialog" aria-labelledby="editor-title">
+    <form id="editor-form">
+      <div class="dialog-head"><div><div class="eyebrow">РЕДАКТИРОВАНИЕ</div><h2 id="editor-title">Новая запись</h2></div><button class="icon-btn" type="button" data-action="close-dialog" aria-label="Закрыть">✕</button></div>
+      <div id="editor-fields"></div>
+      <div class="dialog-actions"><button type="button" class="btn btn-ghost" data-action="close-dialog">Отмена</button><button type="submit" class="btn btn-accent">Сохранить</button></div>
+    </form>
+  </dialog>
+  <input type="file" id="restore-file" accept="application/json,.json" hidden>
+  <div id="toast" role="status" aria-live="polite"></div>
+</body>
+</html>
