@@ -1,4 +1,4 @@
-/* МАСТЕРСКАЯ v2.1 — университет, задачи и публикации.
+/* МАСТЕРСКАЯ v2.4 — подзадачи, активность, университет, проекты и публикации.
    Данные хранятся ТОЛЬКО в localStorage этого браузера.
    Ни токенов GitHub, ни секретов, ни запросов к внешним сервисам. */
 (() => {
@@ -18,14 +18,14 @@
   const ACADEMIC_EXAMS = new Set(['credit','dcredit','exam']);
   const COLORS = ['#b8a2d1','#d5bd88','#91b9b0','#96accb','#ce998c','#c0c5a1'];
   const defaultData = () => ({
-    version:3,
+    version:4,
     projects:[
       {id:'tif',name:'TIF / Новониколаевск',color:'#a5a5b8'},
       {id:'engine',name:'Вечный двигатель',color:'#c9a681'},
       {id:'portfolio',name:'Портфолио и развитие',color:'#92baa8'},
       {id:'personal',name:'Личное творчество',color:'#b59acc'}
     ],
-    tasks:[], posts:[], study:[], academic:[], universitySessions:[],
+    tasks:[], posts:[], study:[], academic:[], universitySessions:[], workSessions:[], activityLog:[],
     goals:{'Telegram':4,'Instagram':3,'YouTube Shorts':2,'ВКонтакте':1,'ArtStation':1}
   });
   const app = document.querySelector('#app');
@@ -37,6 +37,7 @@
   let taskFilter = 'active';
   let academicFilter = 'active';
   let academicSubjectFilter = 'all';
+  let activityDays = 30;
   let query = '';
   let selectedMonth = new Date(); selectedMonth.setDate(1);
   let editMode = {type:'task',id:null};
@@ -64,7 +65,7 @@
   function normalize(raw){
     const d=defaultData(); if(!raw || typeof raw!=='object' || Array.isArray(raw))throw Error('Некорректный файл');
     if(Array.isArray(raw.projects))d.projects=raw.projects.slice(0,200).filter(p=>p && typeof p.name==='string').map(p=>({id:String(p.id||safeId()).slice(0,90),name:p.name.slice(0,90),color:COLORS.includes(p.color)||/^#[0-9a-fA-F]{6}$/.test(p.color||'')?p.color:'#b8a2d1'}));
-    if(Array.isArray(raw.tasks))d.tasks=raw.tasks.slice(0,5000).filter(t=>t&&typeof t.title==='string').map(t=>({id:String(t.id||safeId()).slice(0,90),title:t.title.slice(0,300),projectId:String(t.projectId||''),due:hasDate(t.due)?t.due:'',priority:PRIORITIES[t.priority]?t.priority:'normal',status:TASK_STATES[t.status]?t.status:'todo',notes:String(t.notes||'').slice(0,10000)}));
+    if(Array.isArray(raw.tasks))d.tasks=raw.tasks.slice(0,5000).filter(t=>t&&typeof t.title==='string').map(t=>({id:String(t.id||safeId()).slice(0,90),title:t.title.slice(0,300),projectId:String(t.projectId||''),due:hasDate(t.due)?t.due:'',priority:PRIORITIES[t.priority]?t.priority:'normal',status:TASK_STATES[t.status]?t.status:'todo',notes:String(t.notes||'').slice(0,10000),subtasks:Array.isArray(t.subtasks)?t.subtasks.slice(0,250).filter(st=>st&&typeof st.title==='string').map(st=>({id:String(st.id||safeId()).slice(0,90),title:st.title.slice(0,300),done:st.done===true})):[]}));
     if(Array.isArray(raw.posts))d.posts=raw.posts.slice(0,5000).filter(p=>p&&typeof p.title==='string').map(p=>({id:String(p.id||safeId()).slice(0,90),title:p.title.slice(0,300),channel:CHANNELS.includes(p.channel)?p.channel:'Telegram',format:FORMATS.includes(p.format)?p.format:'Пост',projectId:String(p.projectId||''),date:hasDate(p.date)?p.date:'',status:STAGES[p.status]?p.status:'idea',notes:String(p.notes||'').slice(0,10000),link:validUrl(p.link)?p.link:''}));
     if(Array.isArray(raw.study))d.study=raw.study.slice(0,1000).filter(x=>x&&typeof x.title==='string').map(x=>({
       id:String(x.id||safeId()).slice(0,90),title:x.title.slice(0,300),area:STUDY_AREAS.includes(x.area)?x.area:'Другое',
@@ -84,22 +85,93 @@
       due:hasDate(x.due)?x.due:'',priority:PRIORITIES[x.priority]?x.priority:'normal',sessionId:String(x.sessionId||'').slice(0,90),
       teacher:String(x.teacher||'').slice(0,160),nextStep:String(x.nextStep||'').slice(0,500),notes:String(x.notes||'').slice(0,10000)
     }));
+    if(Array.isArray(raw.workSessions))d.workSessions=raw.workSessions.slice(0,10000).filter(x=>x&&typeof x==='object').map(x=>({
+      id:String(x.id||safeId()).slice(0,90),date:hasDate(x.date)?x.date:today(),minutes:Math.max(1,Math.min(1440,Math.floor(n(x.minutes)||1))),
+      area:['3D / Арт','Разработка игр','Учёба в вузе','Соцсети / портфолио','Другое'].includes(x.area)?x.area:'Другое',
+      projectId:String(x.projectId||''),note:String(x.note||'').slice(0,1000)
+    }));
+    if(Array.isArray(raw.activityLog))d.activityLog=raw.activityLog.slice(-20000).filter(x=>x&&typeof x==='object'&&hasDate(x.date)&&[-1,1].includes(x.delta)).map(x=>({
+      id:String(x.id||safeId()).slice(0,90),date:x.date,delta:x.delta,
+      kind:['task','subtask','post','academic'].includes(x.kind)?x.kind:'task',title:String(x.title||'').slice(0,300)
+    }));
     if(raw.goals&&typeof raw.goals==='object')CHANNELS.forEach(c=>d.goals[c]=Math.max(0,Math.min(100,Math.floor(n(raw.goals[c]??d.goals[c])))));
     return d;
   }
   function save(){try{localStorage.setItem(STORAGE_KEY,JSON.stringify(data));}catch(e){console.error(e);alert('Не удалось сохранить данные. Возможно, в браузере переполнено хранилище. Сделай резервную копию.');}}
+  const WORK_AREAS = ['3D / Арт','Разработка игр','Учёба в вузе','Соцсети / портфолио','Другое'];
+  function recordChange(kind,title,delta){
+    if(!delta)return;
+    data.activityLog.push({id:safeId(),date:today(),kind,title:String(title).slice(0,300),delta:delta>0?1:-1});
+    if(data.activityLog.length>20000)data.activityLog.splice(0,data.activityLog.length-20000);
+  }
+  function transition(kind,title,prev,next){if(Boolean(prev)!==Boolean(next))recordChange(kind,title,next?1:-1);}
+  function subtaskStats(t){const total=t.subtasks?.length||0;const done=(t.subtasks||[]).filter(x=>x.done).length;return {done,total,pct:total?Math.round(done/total*100):0};}
+  function activitySeries(days=activityDays,offset=0){
+    const first=shiftDate(new Date(),-(days-1+offset)),series=[];
+    for(let i=0;i<days;i++){
+      const date=iso(shiftDate(first,i));const events=data.activityLog.filter(x=>x.date===date);
+      const minutes=data.workSessions.filter(x=>x.date===date).reduce((a,x)=>a+x.minutes,0);
+      series.push({date,plus:events.filter(x=>x.delta>0).length,minus:events.filter(x=>x.delta<0).length,minutes});
+    }
+    return series;
+  }
+  function periodStats(series){return {done:series.reduce((a,x)=>a+x.plus,0),reopened:series.reduce((a,x)=>a+x.minus,0),minutes:series.reduce((a,x)=>a+x.minutes,0),active:series.filter(x=>x.plus||x.minus||x.minutes).length};}
+  function hoursString(min){return min>=60?`${Math.floor(min/60)} ч ${min%60?min%60+' мин':''}`.trim():`${min} мин`;}
+  function graphActions(series){
+    const w=960,h=244,pad=22,usable=w-pad*2,base=135,top=29,bottom=209,maxP=Math.max(1,...series.map(x=>x.plus)),maxM=Math.max(1,...series.map(x=>x.minus)),slot=usable/series.length;
+    const grid=`<line x1="${pad}" y1="${base}" x2="${w-pad}" y2="${base}" stroke="#566174" stroke-width="1.4"/><line x1="${pad}" y1="${top}" x2="${w-pad}" y2="${top}" stroke="#273344" stroke-dasharray="4 6"/><line x1="${pad}" y1="${bottom}" x2="${w-pad}" y2="${bottom}" stroke="#273344" stroke-dasharray="4 6"/>`;
+    const bars=series.map((d,i)=>{const x=pad+i*slot+slot*.15,bw=Math.max(2,slot*.68),ph=d.plus?Math.max(5,d.plus/maxP*(base-top)):0,mh=d.minus?Math.max(5,d.minus/maxM*(bottom-base)):0;
+      return `<g><title>${escapeHtml(prettyDate(d.date,true))}: +${d.plus}, −${d.minus}</title>${ph?`<rect x="${x.toFixed(1)}" y="${(base-ph).toFixed(1)}" width="${bw.toFixed(1)}" height="${ph.toFixed(1)}" rx="${Math.min(3,bw/4)}" fill="#c69a45"/>`:''}${mh?`<rect x="${x.toFixed(1)}" y="${base}" width="${bw.toFixed(1)}" height="${mh.toFixed(1)}" rx="${Math.min(3,bw/4)}" fill="#c67d83"/>`:''}</g>`;
+    }).join('');
+    const ticks=series.map((d,i)=>((i===0||i===series.length-1||i%Math.ceil(series.length/6)===0)?`<text x="${(pad+i*slot+slot/2).toFixed(1)}" y="233" text-anchor="middle" fill="#a1abbb" font-size="12">${escapeHtml(prettyDate(d.date))}</text>`:'')).join('');
+    return `<svg class="activity-svg" viewBox="0 0 ${w} ${h}" role="img" aria-label="График выполненных и повторно открытых действий по дням">${grid}${bars}${ticks}</svg>`;
+  }
+  function graphMinutes(series){
+    const w=960,h=226,pad=22,usable=w-pad*2,base=184,top=27,max=Math.max(1,...series.map(x=>x.minutes)),slot=usable/series.length;
+    const bars=series.map((d,i)=>{const x=pad+i*slot+slot*.15,bw=Math.max(2,slot*.68),ph=d.minutes?Math.max(5,d.minutes/max*(base-top)):0;
+      return `<g><title>${escapeHtml(prettyDate(d.date,true))}: ${d.minutes} мин</title>${ph?`<rect x="${x.toFixed(1)}" y="${(base-ph).toFixed(1)}" width="${bw.toFixed(1)}" height="${ph.toFixed(1)}" rx="${Math.min(3,bw/4)}" fill="#88b7b0"/>`:''}</g>`;
+    }).join('');
+    const ticks=series.map((d,i)=>((i===0||i===series.length-1||i%Math.ceil(series.length/6)===0)?`<text x="${(pad+i*slot+slot/2).toFixed(1)}" y="215" text-anchor="middle" fill="#a1abbb" font-size="12">${escapeHtml(prettyDate(d.date))}</text>`:'')).join('');
+    return `<svg class="activity-svg" viewBox="0 0 ${w} ${h}" role="img" aria-label="График времени зафиксированных рабочих сессий по дням"><line x1="${pad}" y1="${base}" x2="${w-pad}" y2="${base}" stroke="#566174"/>${bars}${ticks}</svg>`;
+  }
+  function renderActivity(){
+    const series=activitySeries(),cur=periodStats(series),prev=periodStats(activitySeries(activityDays,activityDays));
+    const diff=cur.done-prev.done;const diffMinutes=cur.minutes-prev.minutes;
+    const recent=[...data.workSessions].sort((a,b)=>b.date.localeCompare(a.date)).slice(0,12);
+    return `${heading('ЛИЧНАЯ АНАЛИТИКА','Активность','Следи за результатами и затраченным временем без штрафов за отдых. Дни без записей не считаются регрессом.','<button class="btn btn-accent" data-action="add-work">+ Записать рабочую сессию</button>')}
+    <div class="activity-period" role="group" aria-label="Период графика">${[7,30,90].map(d=>`<button class="${activityDays===d?'selected':''}" data-action="activity-period" data-days="${d}" aria-pressed="${activityDays===d}">${d} дней</button>`).join('')}</div>
+    <div class="activity-summary">
+      <div class="stat-card"><div class="stat-icon">✓</div><div class="stat-value">${cur.done}</div><div class="stat-label">Завершённых действий · ${diff>0?'+':''}${diff} к прошлому периоду</div></div>
+      <div class="stat-card"><div class="stat-icon">↶</div><div class="stat-value">${cur.reopened}</div><div class="stat-label">Повторно открыто (отдельный показатель)</div></div>
+      <div class="stat-card"><div class="stat-icon">◷</div><div class="stat-value">${hoursString(cur.minutes)}</div><div class="stat-label">Записано времени · ${diffMinutes>0?'+':''}${diffMinutes} мин</div></div>
+      <div class="stat-card"><div class="stat-icon">▦</div><div class="stat-value">${cur.active} / ${activityDays}</div><div class="stat-label">Дней с записями активности</div></div>
+    </div>
+    <section class="panel activity-panel"><div class="panel-title"><h2>Прогресс и возвращённые в работу действия</h2></div>
+    <div class="activity-legend"><span><i class="legend-dot positive"></i>Завершено (+)</span><span><i class="legend-dot negative"></i>Возобновлено (−)</span></div>
+    ${graphActions(series)}<p class="subnote">Учитываются закрытие и повторное открытие задач и подзадач, публикации и закрытие работ по вузу. Каждый такой шаг — отдельное событие. Удаление записей не стирает историю.</p></section>
+    <section class="panel activity-panel"><div class="panel-title"><h2>Время работы</h2></div>${graphMinutes(series)}<p class="subnote">Этот график строится по рабочим сессиям, которые ты записываешь вручную.</p></section>
+    <section class="panel activity-panel"><div class="panel-title"><h2>Последние рабочие сессии</h2><button class="text-button" data-action="add-work">+ Добавить ↗</button></div>
+    ${recent.length?recent.map(x=>`<div class="list-row"><div class="row-main"><div class="row-title">${escapeHtml(x.area)} · ${hoursString(x.minutes)}</div><div class="row-sub">${prettyDate(x.date,true)}${x.projectId?' · '+escapeHtml(projectLabel(x.projectId)):''}${x.note?' · '+escapeHtml(x.note):''}</div></div><button class="icon-btn" data-action="edit-work" data-id="${escapeHtml(x.id)}" title="Изменить сессию">✎</button><button class="icon-btn" data-action="delete-work" data-id="${escapeHtml(x.id)}" title="Удалить сессию">✕</button></div>`).join(''):'<div class="empty">Рабочих сессий пока нет. Можно записать хотя бы 20 минут работы над проектом.</div>'}</section>
+    <p class="subnote">События выполнения фиксируются начиная с версии 2.4. Для старых задач без истории выполнения прошлые даты восстановить невозможно.</p>`;
+  }
   function stat(){const m=today().slice(0,7);return {open:data.tasks.filter(x=>x.status!=='done').length,done:data.tasks.filter(x=>x.status==='done').length,planned:data.posts.filter(x=>x.status!=='published'&&x.date&&x.date>=today()&&x.date<=iso(shiftDate(new Date(),7))).length,published:data.posts.filter(x=>x.status==='published'&&monthOf(x.date)===m).length,academicDue:data.academic.filter(x=>!ACADEMIC_DONE.has(x.status)&&(x.status==='debt'||(x.due&&x.due<today()))).length};}
-  function shellTitle(){return {overview:'Обзор',tasks:'Задачи',content:'Публикации',university:'ВУЗ',calendar:'Календарь',projects:'Проекты',settings:'Настройки'}[page];}
-  function render(){document.querySelector('#crumb-title').textContent=shellTitle();document.querySelector('#today-label').textContent=new Date().toLocaleDateString('ru-RU',{weekday:'long',day:'numeric',month:'long'});document.querySelector('#footer-year').textContent=new Date().getFullYear();document.querySelectorAll('[data-nav]').forEach(b=>b.classList.toggle('active',b.dataset.nav===page));app.innerHTML=({overview:renderOverview,tasks:renderTasks,content:renderContent,university:renderUniversity,calendar:renderCalendar,projects:renderProjects,settings:renderSettings}[page])();}
+  function shellTitle(){return {overview:'Обзор',tasks:'Задачи',content:'Публикации',university:'ВУЗ',calendar:'Календарь',projects:'Проекты',activity:'Активность',settings:'Настройки'}[page];}
+  function render(){document.querySelector('#crumb-title').textContent=shellTitle();document.querySelector('#today-label').textContent=new Date().toLocaleDateString('ru-RU',{weekday:'long',day:'numeric',month:'long'});document.querySelector('#footer-year').textContent=new Date().getFullYear();document.querySelectorAll('[data-nav]').forEach(b=>b.classList.toggle('active',b.dataset.nav===page));app.innerHTML=({overview:renderOverview,tasks:renderTasks,content:renderContent,university:renderUniversity,calendar:renderCalendar,projects:renderProjects,activity:renderActivity,settings:renderSettings}[page])();}
   function heading(label,title,subtitle,actions=''){return `<div class="section-heading"><div><div class="eyebrow">${label}</div><h1>${title}</h1><p>${subtitle}</p></div>${actions?`<div class="actions-inline">${actions}</div>`:''}</div>`;}
-  function taskRow(t,compact=false){const overdue=t.status!=='done'&&t.due&&t.due<today();const due=t.due?`<span class="${overdue?'pill overdue':''}">${overdue?'Просрочено · ':''}${prettyDate(t.due)}</span>`:'Без срока';
-    return compact?`<div class="list-row"><input type="checkbox" class="check" aria-label="Выполнено: ${escapeHtml(t.title)}" data-check-task="${escapeHtml(t.id)}" ${t.status==='done'?'checked':''}><div class="row-main"><div class="row-title" style="${t.status==='done'?'text-decoration:line-through;opacity:.65':''}">${escapeHtml(t.title)}</div><div class="row-sub">${escapeHtml(projectLabel(t.projectId))} · ${due}</div></div><button class="icon-btn" data-action="edit-task" data-id="${escapeHtml(t.id)}" title="Редактировать">✎</button></div>`:
-    `<div class="task-card ${t.status==='done'?'done':''}"><input type="checkbox" class="check" aria-label="Выполнено: ${escapeHtml(t.title)}" data-check-task="${escapeHtml(t.id)}" ${t.status==='done'?'checked':''}><div class="task-wrap"><div class="row-main"><div class="row-title">${escapeHtml(t.title)}</div><div class="meta-stack">${projectTag(t.projectId)}<span class="tag ${t.priority==='high'?'important':''}">${PRIORITIES[t.priority]}</span><span class="tag">${TASK_STATES[t.status]}</span><span class="${overdue?'pill overdue':'row-sub'}">${due}</span></div>${t.notes?`<div class="row-sub">${escapeHtml(t.notes).slice(0,210)}</div>`:''}</div><div class="task-actions"><button class="icon-btn" data-action="edit-task" data-id="${escapeHtml(t.id)}" title="Редактировать">✎</button><button class="icon-btn" data-action="delete-task" data-id="${escapeHtml(t.id)}" title="Удалить">✕</button></div></div></div>`;
+  function taskRow(t,compact=false){
+    const overdue=t.status!=='done'&&t.due&&t.due<today();const due=t.due?`<span class="${overdue?'pill overdue':''}">${overdue?'Просрочено · ':''}${prettyDate(t.due)}</span>`:'Без срока';
+    const st=subtaskStats(t);const label=st.total?`${st.done}/${st.total} шагов`:'Без подзадач';
+    if(compact)return `<div class="list-row"><input type="checkbox" class="check" aria-label="Выполнено: ${escapeHtml(t.title)}" data-check-task="${escapeHtml(t.id)}" ${t.status==='done'?'checked':''}><div class="row-main"><div class="row-title" style="${t.status==='done'?'text-decoration:line-through;opacity:.65':''}">${escapeHtml(t.title)}</div><div class="row-sub">${escapeHtml(projectLabel(t.projectId))} · ${due}${st.total?' · '+label:''}</div></div><button class="icon-btn" data-action="edit-task" data-id="${escapeHtml(t.id)}" title="Редактировать">✎</button></div>`;
+    const steps=(t.subtasks||[]).map(sub=>`<div class="subtask-row"><input type="checkbox" class="check" data-check-subtask="${escapeHtml(sub.id)}" data-parent="${escapeHtml(t.id)}" aria-label="Выполнено: ${escapeHtml(sub.title)}" ${sub.done?'checked':''}><span class="subtask-name ${sub.done?'is-done':''}">${escapeHtml(sub.title)}</span><button class="icon-btn subtask-edit" data-action="edit-subtask" data-id="${escapeHtml(sub.id)}" data-project="${escapeHtml(t.id)}" title="Изменить шаг">✎</button><button class="icon-btn subtask-remove" data-action="delete-subtask" data-id="${escapeHtml(sub.id)}" data-project="${escapeHtml(t.id)}" title="Удалить шаг">×</button></div>`).join('');
+    return `<div class="task-card ${t.status==='done'?'done':''}"><input type="checkbox" class="check" aria-label="Выполнено: ${escapeHtml(t.title)}" data-check-task="${escapeHtml(t.id)}" ${t.status==='done'?'checked':''}><div class="task-wrap"><div class="row-main"><div class="row-title">${escapeHtml(t.title)}</div><div class="meta-stack">${projectTag(t.projectId)}<span class="tag ${t.priority==='high'?'important':''}">${PRIORITIES[t.priority]}</span><span class="tag">${TASK_STATES[t.status]}</span><span class="${overdue?'pill overdue':'row-sub'}">${due}</span></div>${t.notes?`<div class="row-sub">${escapeHtml(t.notes).slice(0,210)}</div>`:''}
+    <div class="subtasks-box"><div class="subtasks-head"><strong>Подзадачи</strong><span>${label}${st.total?' · '+st.pct+'%':''}</span></div>${st.total?`<div class="progress subtask-progress"><span style="width:${st.pct}%"></span></div>`:''}${steps}<button class="text-button subtask-add" data-action="add-subtask" data-project="${escapeHtml(t.id)}">+ Добавить шаг без срока</button></div>
+    </div><div class="task-actions"><button class="icon-btn" data-action="edit-task" data-id="${escapeHtml(t.id)}" title="Редактировать">✎</button><button class="icon-btn" data-action="delete-task" data-id="${escapeHtml(t.id)}" title="Удалить">✕</button></div></div></div>`;
   }
   function socialGoals(){const m=today().slice(0,7);return CHANNELS.map(ch=>{const done=data.posts.filter(p=>p.channel===ch&&p.status==='published'&&monthOf(p.date)===m).length,goal=data.goals[ch]||0;return `<div class="social-row"><div class="social-meta"><strong>${escapeHtml(ch)}</strong><span>${done} / ${goal||'без цели'}</span></div><div class="progress"><span style="width:${goal?Math.min(100,Math.round(done/goal*100)):0}%"></span></div></div>`;}).join('');}
   function renderOverview(){const s=stat();const openTasks=data.tasks.filter(x=>x.status!=='done').sort((a,b)=>(a.due||'9999').localeCompare(b.due||'9999')).slice(0,5);const upcoming=data.posts.filter(x=>x.status!=='published').sort((a,b)=>(a.date||'9999').localeCompare(b.date||'9999')).slice(0,5);
     return `<div class="hero"><div><div class="eyebrow">ТВОЯ ТВОРЧЕСКАЯ МАСТЕРСКАЯ</div><h1>Идеи, проекты и публикации.<br>Без лишнего шума.</h1><p>Планируй работу, сохраняй идеи и отмечай результат. Не нужно делать всё сразу: достаточно понимать следующий шаг.</p><button class="btn btn-accent" data-action="add-post">+ Запланировать публикацию</button></div><div class="hero-stat"><strong>${s.open}</strong><span>открытых задач</span></div></div>
     <div class="stats-grid"><div class="stat-card"><div class="stat-icon">☑</div><div class="stat-value">${s.open}</div><div class="stat-label">Дел в работе и планах</div></div><div class="stat-card"><div class="stat-icon">▤</div><div class="stat-value">${s.planned}</div><div class="stat-label">Постов в ближайшие 7 дней</div></div><div class="stat-card"><div class="stat-icon">↗</div><div class="stat-value">${s.published}</div><div class="stat-label">Опубликовано за месяц</div></div><div class="stat-card"><div class="stat-icon">▥</div><div class="stat-value">${s.academicDue}</div><div class="stat-label">Долгов и просроченных сдач</div></div></div>
+    <div class="activity-preview"><div><strong>Активность за 7 дней</strong><p>Завершено ${periodStats(activitySeries(7)).done} · Пересмотрено ${periodStats(activitySeries(7)).reopened} · ${hoursString(periodStats(activitySeries(7)).minutes)} записанной работы</p></div><button class="btn btn-soft" data-nav="activity">Смотреть график ↗</button></div>
     <div class="main-grid"><div><div class="panel"><div class="panel-title"><h2>Ближайшие задачи</h2><button class="text-button" data-nav="tasks">Все задачи ↗</button></div>${openTasks.length?openTasks.map(t=>taskRow(t,true)).join(''):'<div class="empty"><span class="empty-icon">✳</span>Задач пока нет. Добавь первый шаг по проекту.</div>'}</div>
     <div class="panel"><div class="panel-title"><h2>В очереди на публикацию</h2><button class="text-button" data-nav="content">Контент-план ↗</button></div>${upcoming.length?upcoming.map(p=>`<div class="list-row"><div class="row-main"><div class="row-title">${escapeHtml(p.title)}</div><div class="row-sub">${escapeHtml(p.channel)} · ${STAGES[p.status]} · ${prettyDate(p.date)}</div></div><button class="icon-btn" data-action="edit-post" data-id="${escapeHtml(p.id)}" title="Редактировать">✎</button></div>`).join(''):'<div class="empty"><span class="empty-icon">▦</span>Идей для публикаций ещё нет.</div>'}</div></div>
     <div><div class="panel"><div class="panel-title"><h2>Публикации в этом месяце</h2><button class="text-button" data-nav="settings">Изменить цели ↗</button></div>${socialGoals()}<div class="subnote">Считаются посты со статусом «Опубликовано» и датой этого месяца.</div></div><div class="panel"><div class="panel-title"><h2>ВУЗ · ближайшие сдачи</h2><button class="text-button" data-nav="university">Все работы ↗</button></div>${[...data.academic].filter(x=>x.status!=='passed').sort((a,b)=>Number(b.status==='debt')-Number(a.status==='debt')||(a.due||'9999').localeCompare(b.due||'9999')).slice(0,4).map(x=>`<div class="list-row"><div class="row-main"><div class="row-title">${escapeHtml(x.title)}</div><div class="row-sub">${escapeHtml(x.subject||'Без дисциплины')} · ${ACADEMIC_STATUSES[x.status]} · ${prettyDate(x.due)}</div></div><button class="icon-btn" data-action="edit-academic" data-id="${escapeHtml(x.id)}" title="Редактировать">✎</button></div>`).join('')||'<div class="empty">Зачёты, курсовые и долги пока не добавлены.</div>'}<button class="text-button" data-action="add-academic" style="margin-top:10px">+ Добавить работу</button></div><div class="panel"><div class="panel-title"><h2>Небольшое напоминание</h2></div><p style="color:var(--muted);font-size:13px">Можно использовать один рабочий материал для разных площадок: короткое видео в Instagram и Shorts, подробный рассказ в Telegram, законченный кейс на ArtStation.</p><button class="text-button" data-action="add-post" style="margin-top:15px">Записать идею ↗</button></div></div></div>`;
@@ -166,8 +238,10 @@
   function input(name,value,attrs=''){return `<input id="fld-${name}" name="${name}" value="${escapeHtml(value)}" ${attrs}>`;}
   function select(name,options){return `<select id="fld-${name}" name="${name}">${options}</select>`;}
   function openEditor(type,id=null,prefProject=''){
-    editMode={type,id};let item;
+    editMode={type,id,parentId:prefProject};let item;
     if(type==='task')item=id?data.tasks.find(t=>t.id===id):{title:'',projectId:prefProject,due:'',priority:'normal',status:'todo',notes:''};
+    if(type==='subtask'){const parent=data.tasks.find(t=>t.id===prefProject);item=parent?(id?parent.subtasks.find(x=>x.id===id):{title:'',done:false}):null;}
+    if(type==='work')item=id?data.workSessions.find(x=>x.id===id):{date:today(),minutes:45,area:'3D / Арт',projectId:'',note:''};
     if(type==='post')item=id?data.posts.find(p=>p.id===id):{title:'',projectId:prefProject,date:'',channel:'Telegram',format:'Пост',status:'idea',notes:'',link:''};
     if(type==='project')item=id?data.projects.find(p=>p.id===id):{name:'',color:COLORS[data.projects.length%COLORS.length]};
     if(type==='study')item=id?data.study.find(x=>x.id===id):{title:'',area:'3D и материалы',projectId:prefProject,status:'planned',progress:0,due:'',nextStep:'',notes:'',sessions:[]};
@@ -175,9 +249,11 @@
     if(type==='academic')item=id?data.academic.find(x=>x.id===id):{title:'',subject:'',type:'lab',status:'planned',due:'',priority:'normal',sessionId:'',teacher:'',nextStep:'',notes:''};
     if(type==='session')item=id?data.universitySessions.find(x=>x.id===id):{title:'',start:'',end:'',notes:''};
     if(!item)return;
-    document.querySelector('#editor-title').textContent=(type==='study-log'?'Записать ':id?'Редактировать ':'Добавить ')+(type==='task'?'задачу':type==='post'?'публикацию':type==='study'?'тему обучения':type==='study-log'?'занятие':type==='academic'?'работу по вузу':type==='session'?'сессию':'проект');
+    document.querySelector('#editor-title').textContent=(type==='study-log'?'Записать ':id?'Редактировать ':'Добавить ')+(type==='subtask'?'подзадачу':type==='work'?'рабочую сессию':type==='task'?'задачу':type==='post'?'публикацию':type==='study'?'тему обучения':type==='study-log'?'занятие':type==='academic'?'работу по вузу':type==='session'?'сессию':'проект');
     const f=document.querySelector('#editor-fields');
     if(type==='task')f.innerHTML=field('Задача *','title',input('title',item.title,'required maxlength="300" placeholder="Например: подобрать материалы для стены"'))+field('Проект','projectId',select('projectId',projectOptions(item.projectId)))+`<div class="form-cols">${field('Срок','due',input('due',item.due,'type="date"'))}${field('Приоритет','priority',select('priority',optionList(PRIORITIES,item.priority)))}</div>`+field('Состояние','status',select('status',optionList(TASK_STATES,item.status)))+field('Заметки','notes',`<textarea id="fld-notes" name="notes" maxlength="10000" placeholder="Коротко о следующем шаге">${escapeHtml(item.notes)}</textarea>`);
+    if(type==='subtask')f.innerHTML=`<p class="dialog-context">Подзадачи не имеют дедлайна. Отмечай каждый шаг по мере выполнения.</p>`+field('Название шага *','title',input('title',item.title,'required maxlength="300" placeholder="Например: подготовить UV-развёртку"'));
+    if(type==='work')f.innerHTML=`<div class="form-cols">${field('Дата','date',input('date',item.date,'type="date" required'))}${field('Время, минуты','minutes',input('minutes',item.minutes,'type="number" min="1" max="1440" required'))}</div>`+field('Направление','area',select('area',WORK_AREAS.map(a=>`<option value="${escapeHtml(a)}" ${item.area===a?'selected':''}>${escapeHtml(a)}</option>`).join('')))+field('Связанный проект','projectId',select('projectId',projectOptions(item.projectId)))+field('Что сделал','note',`<textarea id="fld-note" name="note" maxlength="1000" placeholder="Можно записать даже небольшой шаг">${escapeHtml(item.note)}</textarea>`);
     if(type==='post')f.innerHTML=field('Тема публикации *','title',input('title',item.title,'required maxlength="300" placeholder="Например: как я исправил Weight Paint"'))+`<div class="form-cols">${field('Площадка','channel',select('channel',CHANNELS.map(c=>`<option ${item.channel===c?'selected':''} value="${escapeHtml(c)}">${escapeHtml(c)}</option>`).join('')))}${field('Формат','format',select('format',FORMATS.map(c=>`<option ${item.format===c?'selected':''} value="${escapeHtml(c)}">${escapeHtml(c)}</option>`).join('')))}</div>`+field('Проект','projectId',select('projectId',projectOptions(item.projectId)))+`<div class="form-cols">${field('Дата','date',input('date',item.date,'type="date"'))}${field('Стадия','status',select('status',optionList(STAGES,item.status)))}</div>`+field('Идея / текст / что подготовить','notes',`<textarea id="fld-notes" name="notes" maxlength="10000" placeholder="Кадры, тезисы, ссылка на исходные материалы…">${escapeHtml(item.notes)}</textarea>`)+field('Ссылка на опубликованный пост','link',input('link',item.link,'type="url" maxlength="2000" placeholder="https://…"'));
     if(type==='study')f.innerHTML=field('Чему хочешь научиться *','title',input('title',item.title,'required maxlength="300" placeholder="Например: Hand-painted материалы"'))+`<div class="form-cols">${field('Направление','area',select('area',STUDY_AREAS.map(a=>`<option value="${escapeHtml(a)}" ${item.area===a?'selected':''}>${escapeHtml(a)}</option>`).join('')))}${field('Состояние','status',select('status',optionList(STUDY_STATES,item.status)))}</div>`+`<div class="form-cols">${field('Прогресс, %','progress',input('progress',item.progress,'type="number" min="0" max="100" step="5"'))}${field('Желаемая дата','due',input('due',item.due,'type="date"'))}</div>`+field('Связанный проект','projectId',select('projectId',projectOptions(item.projectId)))+field('Следующий маленький шаг','nextStep',input('nextStep',item.nextStep,'maxlength="500" placeholder="Протестировать текстуру на модели"'))+field('Материалы и заметки','notes',`<textarea id="fld-notes" name="notes" maxlength="10000" placeholder="Ссылки, важные понятия, заметки…">${escapeHtml(item.notes)}</textarea>`);
     if(type==='study-log')f.innerHTML=`<p class="dialog-context">Тема: ${escapeHtml(item.title)}</p><div class="form-cols">${field('Дата занятия','date',input('date',today(),'type="date" required'))}${field('Продолжительность, мин','minutes',input('minutes',30,'type="number" min="1" max="1440" required'))}</div>`+field('Что получилось / что изучил','note',`<textarea id="fld-note" name="note" maxlength="1000" placeholder="Например: исправил веса на рукавах и проверил деформации"></textarea>`);
@@ -187,17 +263,20 @@
     editor.showModal();setTimeout(()=>f.querySelector('input')?.focus(),50);
   }
   function saveEntry(){const fd=new FormData(form);const id=editMode.id??safeId();const txt=k=>String(fd.get(k)||'').trim();const type=editMode.type;
-    if(type==='task'){const title=txt('title');if(!title)return;const entry={id,title:title.slice(0,300),projectId:txt('projectId'),due:hasDate(txt('due'))?txt('due'):'',priority:PRIORITIES[txt('priority')]?txt('priority'):'normal',status:TASK_STATES[txt('status')]?txt('status'):'todo',notes:txt('notes').slice(0,10000)};upsert(data.tasks,entry);}
-    if(type==='post'){const title=txt('title');if(!title)return;const link=txt('link');if(link&&!validUrl(link)){alert('Ссылка должна начинаться с http:// или https://');return;}const entry={id,title:title.slice(0,300),channel:CHANNELS.includes(txt('channel'))?txt('channel'):'Telegram',format:FORMATS.includes(txt('format'))?txt('format'):'Пост',projectId:txt('projectId'),date:hasDate(txt('date'))?txt('date'):'',status:STAGES[txt('status')]?txt('status'):'idea',notes:txt('notes').slice(0,10000),link};upsert(data.posts,entry);}
+    if(type==='task'){const title=txt('title');if(!title)return;const prev=data.tasks.find(x=>x.id===id);const entry={id,title:title.slice(0,300),projectId:txt('projectId'),due:hasDate(txt('due'))?txt('due'):'',priority:PRIORITIES[txt('priority')]?txt('priority'):'normal',status:TASK_STATES[txt('status')]?txt('status'):'todo',notes:txt('notes').slice(0,10000),subtasks:prev?.subtasks||[]};transition('task',title,prev?.status==='done',entry.status==='done');upsert(data.tasks,entry);} 
+    if(type==='subtask'){const parent=data.tasks.find(t=>t.id===editMode.parentId);const title=txt('title');if(!parent||!title)return;const old=parent.subtasks.find(x=>x.id===id);upsert(parent.subtasks,{id,title:title.slice(0,300),done:old?.done||false});}
+    if(type==='work'){const prev=data.workSessions.find(x=>x.id===id);const entry={id,date:hasDate(txt('date'))?txt('date'):today(),minutes:Math.max(1,Math.min(1440,Math.floor(n(txt('minutes'))||1))),area:WORK_AREAS.includes(txt('area'))?txt('area'):'Другое',projectId:txt('projectId'),note:txt('note').slice(0,1000)};upsert(data.workSessions,entry);}
+
+    if(type==='post'){const title=txt('title');if(!title)return;const previous=data.posts.find(x=>x.id===id);const link=txt('link');if(link&&!validUrl(link)){alert('Ссылка должна начинаться с http:// или https://');return;}const entry={id,title:title.slice(0,300),channel:CHANNELS.includes(txt('channel'))?txt('channel'):'Telegram',format:FORMATS.includes(txt('format'))?txt('format'):'Пост',projectId:txt('projectId'),date:hasDate(txt('date'))?txt('date'):'',status:STAGES[txt('status')]?txt('status'):'idea',notes:txt('notes').slice(0,10000),link};transition('post',title,previous?.status==='published',entry.status==='published');upsert(data.posts,entry);}
     if(type==='study'){const title=txt('title');if(!title)return;const previous=data.study.find(x=>x.id===id);const entry={id,title:title.slice(0,300),area:STUDY_AREAS.includes(txt('area'))?txt('area'):'Другое',projectId:txt('projectId'),status:STUDY_STATES[txt('status')]?txt('status'):'planned',progress:Math.max(0,Math.min(100,Math.floor(n(txt('progress'))))),due:hasDate(txt('due'))?txt('due'):'',nextStep:txt('nextStep').slice(0,500),notes:txt('notes').slice(0,10000),sessions:previous?.sessions||[]};upsert(data.study,entry);}
     if(type==='study-log'){const topic=data.study.find(x=>x.id===id);if(!topic)return;topic.sessions.push({id:safeId(),date:hasDate(txt('date'))?txt('date'):today(),minutes:Math.max(1,Math.min(1440,Math.floor(n(txt('minutes'))||1))),note:txt('note').slice(0,1000)});if(topic.status==='planned')topic.status='learning';}
-    if(type==='academic'){const title=txt('title');if(!title)return;const entry={id,title:title.slice(0,300),subject:txt('subject').slice(0,160),type:ACADEMIC_TYPES[txt('type')]?txt('type'):'other',status:ACADEMIC_STATUSES[txt('status')]?txt('status'):'planned',due:hasDate(txt('due'))?txt('due'):'',priority:PRIORITIES[txt('priority')]?txt('priority'):'normal',sessionId:txt('sessionId'),teacher:txt('teacher').slice(0,160),nextStep:txt('nextStep').slice(0,500),notes:txt('notes').slice(0,10000)};upsert(data.academic,entry);}
+    if(type==='academic'){const title=txt('title');if(!title)return;const previous=data.academic.find(x=>x.id===id);const entry={id,title:title.slice(0,300),subject:txt('subject').slice(0,160),type:ACADEMIC_TYPES[txt('type')]?txt('type'):'other',status:ACADEMIC_STATUSES[txt('status')]?txt('status'):'planned',due:hasDate(txt('due'))?txt('due'):'',priority:PRIORITIES[txt('priority')]?txt('priority'):'normal',sessionId:txt('sessionId'),teacher:txt('teacher').slice(0,160),nextStep:txt('nextStep').slice(0,500),notes:txt('notes').slice(0,10000)};transition('academic',title,previous?.status==='passed',entry.status==='passed');upsert(data.academic,entry);}
     if(type==='session'){const title=txt('title');if(!title)return;const start=hasDate(txt('start'))?txt('start'):'';const end=hasDate(txt('end'))?txt('end'):'';if(start&&end&&start>end){alert('Конец сессии должен быть не раньше её начала.');return;}upsert(data.universitySessions,{id,title:title.slice(0,120),start,end,notes:txt('notes').slice(0,10000)});}
     if(type==='project'){const name=txt('name');if(!name)return;const entry={id,name:name.slice(0,90),color:COLORS.includes(txt('color'))?txt('color'):COLORS[0]};upsert(data.projects,entry);}
     save();editor.close();render();toast('Сохранено');
   }
   function upsert(list,entry){const i=list.findIndex(x=>x.id===entry.id);if(i<0)list.push(entry);else list[i]=entry;}
-  function remove(type,id){const list=data[type];const i=list.findIndex(x=>x.id===id);if(i<0)return;const target=list[i];const extra=type==='projects'?' Задачи, посты и темы обучения останутся без привязки.':'';if(!confirm(`Удалить «${target.title||target.name}»?${extra}`))return;list.splice(i,1);if(type==='universitySessions'){data.academic.forEach(x=>{if(x.sessionId===id)x.sessionId='';});}if(type==='projects'){data.tasks.forEach(x=>{if(x.projectId===id)x.projectId='';});data.posts.forEach(x=>{if(x.projectId===id)x.projectId='';});data.study.forEach(x=>{if(x.projectId===id)x.projectId='';});}save();render();toast('Удалено');}
+  function remove(type,id){const list=data[type];const i=list.findIndex(x=>x.id===id);if(i<0)return;const target=list[i];const label=target.title||target.name||(type==='workSessions'?`${prettyDate(target.date,true)} · ${hoursString(target.minutes)}`:'запись');const extra=type==='projects'?' Задачи, посты и темы обучения останутся без привязки.':'';if(!confirm(`Удалить «${label}»?${extra}`))return;list.splice(i,1);if(type==='universitySessions'){data.academic.forEach(x=>{if(x.sessionId===id)x.sessionId='';});}if(type==='projects'){data.tasks.forEach(x=>{if(x.projectId===id)x.projectId='';});data.posts.forEach(x=>{if(x.projectId===id)x.projectId='';});data.study.forEach(x=>{if(x.projectId===id)x.projectId='';});}save();render();toast('Удалено');}
   async function exportData(){
     const text=JSON.stringify(data,null,2);
     const filename=`masterskaya_backup_${today()}.json`;
@@ -234,6 +313,10 @@
       case 'add-academic':openEditor('academic');break;case 'edit-academic':openEditor('academic',id);break;case 'delete-academic':remove('academic',id);break;
       case 'add-session':openEditor('session');break;case 'edit-session':openEditor('session',id);break;case 'delete-session':remove('universitySessions',id);break;
       case 'add-study':openEditor('study',null,p);break;case 'edit-study':openEditor('study',id);break;case 'log-study':openEditor('study-log',id);break;case 'delete-study':remove('study',id);break;
+      case 'add-subtask':openEditor('subtask',null,p);break;case 'edit-subtask':openEditor('subtask',id,p);break;
+      case 'delete-subtask':{const parent=data.tasks.find(t=>t.id===p);const sub=parent?.subtasks.find(x=>x.id===id);if(sub&&confirm(`Удалить подзадачу «${sub.title}»?`)){parent.subtasks=parent.subtasks.filter(x=>x.id!==id);save();render();toast('Шаг удалён');}break;}
+      case 'add-work':openEditor('work');break;case 'edit-work':openEditor('work',id);break;case 'delete-work':remove('workSessions',id);break;
+      case 'activity-period':activityDays=[7,30,90].includes(Number(btn.dataset.days))?Number(btn.dataset.days):30;render();break;
       case 'add-task':openEditor('task',null,p);break;case 'add-post':openEditor('post',null,p);break;case 'add-project':openEditor('project');break;
       case 'edit-task':openEditor('task',id);break;case 'edit-post':openEditor('post',id);break;case 'edit-project':openEditor('project',id);break;
       case 'delete-task':remove('tasks',id);break;case 'delete-post':remove('posts',id);break;case 'delete-project':remove('projects',id);break;
@@ -246,12 +329,13 @@
     }
   });
   document.addEventListener('change',e=>{
-    if(e.target.matches('[data-check-task]')){const t=data.tasks.find(x=>x.id===e.target.dataset.checkTask);if(t){t.status=e.target.checked?'done':'todo';save();render();}}
-    if(e.target.matches('[data-post-stage]')){const p=data.posts.find(x=>x.id===e.target.dataset.postStage);if(p&&STAGES[e.target.value]){p.status=e.target.value;save();render();toast('Этап обновлён');}}
+    if(e.target.matches('[data-check-task]')){const t=data.tasks.find(x=>x.id===e.target.dataset.checkTask);if(t){const before=t.status==='done';t.status=e.target.checked?'done':'todo';transition('task',t.title,before,t.status==='done');save();render();}}
+    if(e.target.matches('[data-check-subtask]')){const parent=data.tasks.find(t=>t.id===e.target.dataset.parent);const sub=parent?.subtasks.find(st=>st.id===e.target.dataset.checkSubtask);if(sub){const before=sub.done;sub.done=e.target.checked;transition('subtask',sub.title,before,sub.done);save();render();}}
+    if(e.target.matches('[data-post-stage]')){const p=data.posts.find(x=>x.id===e.target.dataset.postStage);if(p&&STAGES[e.target.value]){const before=p.status==='published';p.status=e.target.value;transition('post',p.title,before,p.status==='published');save();render();toast('Этап обновлён');}}
     if(e.target.matches('#task-filter')){taskFilter=e.target.value;render();}
     if(e.target.matches('#academic-filter')){academicFilter=e.target.value;render();}
     if(e.target.matches('#academic-subject-filter')){academicSubjectFilter=e.target.value;render();}
-    if(e.target.matches('[data-academic-status]')){const x=data.academic.find(a=>a.id===e.target.dataset.academicStatus);if(x&&ACADEMIC_STATUSES[e.target.value]){x.status=e.target.value;save();render();toast('Статус работы обновлён');}}
+    if(e.target.matches('[data-academic-status]')){const x=data.academic.find(a=>a.id===e.target.dataset.academicStatus);if(x&&ACADEMIC_STATUSES[e.target.value]){const before=x.status==='passed';x.status=e.target.value;transition('academic',x.title,before,x.status==='passed');save();render();toast('Статус работы обновлён');}}
   });
   document.addEventListener('input',e=>{if(e.target.matches('#task-search')){query=e.target.value;const pos=e.target.selectionStart;render();const input=document.querySelector('#task-search');input.focus();input.setSelectionRange(pos,pos);}});
   form.addEventListener('submit',e=>{e.preventDefault();saveEntry();});
