@@ -1,4 +1,4 @@
-/* МАСТЕРСКАЯ v2.6 — проекты с задачами, ручной порядок, подзадачи и активность.
+/* МАСТЕРСКАЯ v2.7 — проекты с задачами, ручной порядок, подзадачи и активность.
    Данные хранятся ТОЛЬКО в localStorage этого браузера.
    Ни токенов GitHub, ни секретов, ни запросов к внешним сервисам. */
 (() => {
@@ -23,7 +23,7 @@
   const ATTENDANCE_STATUSES = {attended:'Посетил',missed:'Пропустил',excused:'Уважительная причина',cancelled:'Отменена'};
   const COLORS = ['#b8a2d1','#d5bd88','#91b9b0','#96accb','#ce998c','#c0c5a1'];
   const defaultData = () => ({
-    version:6,
+    version:7,
     taskSort:'manual',
     projects:[
       {id:'tif',name:'TIF / Новониколаевск',color:'#a5a5b8'},
@@ -47,6 +47,7 @@
   let academicSubjectFilter = 'all';
   let universityTab = 'attendance';
   let attendanceStart = iso(getMonday(new Date()));
+  let overviewDate = today();
   let activityDays = 30;
   let query = '';
   let selectedMonth = new Date(); selectedMonth.setDate(1);
@@ -140,10 +141,10 @@
       weekday:WEEK_DAYS[x.weekday]?Number(x.weekday):1,start:hhmm(x.start)?x.start:'09:00',end:hhmm(x.end)?x.end:'10:30',
       kind:LESSON_TYPES[x.kind]?x.kind:'lecture',parity:WEEK_PARITIES[x.parity]?x.parity:'every',notes:String(x.notes||'').slice(0,1000)
     }));
-    if(Array.isArray(raw.attendance))d.attendance=raw.attendance.slice(0,25000).filter(x=>x&&hasDate(x.date)&&typeof x.subject==='string'&&ATTENDANCE_STATUSES[x.status]).map(x=>({
+    if(Array.isArray(raw.attendance))d.attendance=raw.attendance.slice(0,25000).filter(x=>x&&hasDate(x.date)&&typeof x.subject==='string'&&(x.status===''||x.status==null||ATTENDANCE_STATUSES[x.status])).map(x=>({
       id:String(x.id||safeId()).slice(0,90),scheduleId:String(x.scheduleId||'').slice(0,90),date:x.date,
       subject:x.subject.slice(0,160),teacher:String(x.teacher||'').slice(0,160),kind:LESSON_TYPES[x.kind]?x.kind:'other',
-      start:hhmm(x.start)?x.start:'',end:hhmm(x.end)?x.end:'',status:x.status,notes:String(x.notes||'').slice(0,1500)
+      start:hhmm(x.start)?x.start:'',end:hhmm(x.end)?x.end:'',status:ATTENDANCE_STATUSES[x.status]?x.status:'',notes:String(x.notes||'').slice(0,1500)
     }));
     if(Array.isArray(raw.workSessions))d.workSessions=raw.workSessions.slice(0,10000).filter(x=>x&&typeof x==='object').map(x=>({
       id:String(x.id||safeId()).slice(0,90),date:hasDate(x.date)?x.date:today(),minutes:Math.max(1,Math.min(1440,Math.floor(n(x.minutes)||1))),
@@ -230,13 +231,24 @@
     </div><div class="task-actions"><button class="icon-btn" data-action="edit-task" data-id="${escapeHtml(t.id)}" title="Редактировать">✎</button><button class="icon-btn" data-action="delete-task" data-id="${escapeHtml(t.id)}" title="Удалить">✕</button></div></div></div>`;
   }
   function socialGoals(){const m=today().slice(0,7);return CHANNELS.map(ch=>{const done=data.posts.filter(p=>p.channel===ch&&p.status==='published'&&monthOf(p.date)===m).length,goal=data.goals[ch]||0;return `<div class="social-row"><div class="social-meta"><strong>${escapeHtml(ch)}</strong><span>${done} / ${goal||'без цели'}</span></div><div class="progress"><span style="width:${goal?Math.min(100,Math.round(done/goal*100)):0}%"></span></div></div>`;}).join('');}
+  function renderOverviewLessons(){
+    const day=overviewDate, lessons=attendanceItems(day,day);
+    const attended=lessons.filter(x=>x.record?.status==='attended').length;
+    const dateLabel=dateObj(day).toLocaleDateString('ru-RU',{weekday:'long',day:'numeric',month:'long'});
+    const rows=lessons.map(x=>`<div class="overview-lesson-row"><div class="overview-lesson-main"><strong>${escapeHtml(x.start||'Без времени')} · ${escapeHtml(x.subject)}</strong><span>${escapeHtml(LESSON_TYPES[x.kind]||'Пара')} · ${escapeHtml(lessonStatusLabel(x.record,x.date,x.start))}</span></div>${lessonCheck(x)}</div>`).join('');
+    return `<div class="overview-day-nav"><button class="icon-btn" data-action="overview-day-prev" aria-label="Предыдущий день" title="Предыдущий день">←</button><strong>${escapeHtml(dateLabel)}${day===today()?' · сегодня':''}</strong><button class="icon-btn" data-action="overview-day-next" aria-label="Следующий день" title="Следующий день">→</button>${day!==today()?`<button class="text-button" data-action="overview-day-today">Сегодня</button>`:''}</div>
+      <div class="overview-attendance-count">Посещено ${attended} из ${lessons.length} пар</div>
+      ${rows||'<div class="empty">На этот день пар нет. Добавь занятие через журнал ВУЗа.</div>'}`;
+  }
   function renderOverview(){const s=stat();const openTasks=orderedTasks(data.tasks.filter(x=>x.status!=='done')).slice(0,5);const upcoming=data.posts.filter(x=>x.status!=='published').sort((a,b)=>(a.date||'9999').localeCompare(b.date||'9999')).slice(0,5);
     return `<div class="hero"><div><div class="eyebrow">ТВОЯ ТВОРЧЕСКАЯ МАСТЕРСКАЯ</div><h1>Идеи, проекты и публикации.<br>Без лишнего шума.</h1><p>Планируй работу, сохраняй идеи и отмечай результат. Не нужно делать всё сразу: достаточно понимать следующий шаг.</p><button class="btn btn-accent" data-action="add-post">+ Запланировать публикацию</button></div><div class="hero-stat"><strong>${s.open}</strong><span>открытых задач</span></div></div>
     <div class="stats-grid"><div class="stat-card"><div class="stat-icon">☑</div><div class="stat-value">${s.open}</div><div class="stat-label">Дел в работе и планах</div></div><div class="stat-card"><div class="stat-icon">▤</div><div class="stat-value">${s.planned}</div><div class="stat-label">Постов в ближайшие 7 дней</div></div><div class="stat-card"><div class="stat-icon">↗</div><div class="stat-value">${s.published}</div><div class="stat-label">Опубликовано за месяц</div></div><div class="stat-card"><div class="stat-icon">▥</div><div class="stat-value">${s.academicDue}</div><div class="stat-label">Долгов и просроченных сдач</div></div></div>
     <div class="activity-preview"><div><strong>Активность за 7 дней</strong><p>Завершено ${periodStats(activitySeries(7)).done} · Пересмотрено ${periodStats(activitySeries(7)).reopened} · ${hoursString(periodStats(activitySeries(7)).minutes)} записанной работы</p></div><button class="btn btn-soft" data-nav="activity">Смотреть график ↗</button></div>
     <div class="main-grid"><div><div class="panel"><div class="panel-title"><h2>Ближайшие задачи</h2><button class="text-button" data-nav="tasks">Все задачи ↗</button></div>${openTasks.length?openTasks.map(t=>taskRow(t,true)).join(''):'<div class="empty"><span class="empty-icon">✳</span>Задач пока нет. Добавь первый шаг по проекту.</div>'}</div>
     <div class="panel"><div class="panel-title"><h2>В очереди на публикацию</h2><button class="text-button" data-nav="content">Контент-план ↗</button></div>${upcoming.length?upcoming.map(p=>`<div class="list-row"><div class="row-main"><div class="row-title">${escapeHtml(p.title)}</div><div class="row-sub">${escapeHtml(p.channel)} · ${STAGES[p.status]} · ${prettyDate(p.date)}</div></div><button class="icon-btn" data-action="edit-post" data-id="${escapeHtml(p.id)}" title="Редактировать">✎</button></div>`).join(''):'<div class="empty"><span class="empty-icon">▦</span>Идей для публикаций ещё нет.</div>'}</div></div>
-    <div><div class="panel"><div class="panel-title"><h2>Публикации в этом месяце</h2><button class="text-button" data-nav="settings">Изменить цели ↗</button></div>${socialGoals()}<div class="subnote">Считаются посты со статусом «Опубликовано» и датой этого месяца.</div></div><div class="panel"><div class="panel-title"><h2>ВУЗ · ближайшие сдачи</h2><button class="text-button" data-nav="university">Все работы ↗</button></div>${[...data.academic].filter(x=>x.status!=='passed').sort((a,b)=>Number(b.status==='debt')-Number(a.status==='debt')||(a.due||'9999').localeCompare(b.due||'9999')).slice(0,4).map(x=>`<div class="list-row"><div class="row-main"><div class="row-title">${escapeHtml(x.title)}</div><div class="row-sub">${escapeHtml(x.subject||'Без дисциплины')} · ${ACADEMIC_STATUSES[x.status]} · ${prettyDate(x.due)}</div></div><button class="icon-btn" data-action="edit-academic" data-id="${escapeHtml(x.id)}" title="Редактировать">✎</button></div>`).join('')||'<div class="empty">Зачёты, курсовые и долги пока не добавлены.</div>'}<button class="text-button" data-action="add-academic" style="margin-top:10px">+ Добавить работу</button></div><div class="panel"><div class="panel-title"><h2>Небольшое напоминание</h2></div><p style="color:var(--muted);font-size:13px">Можно использовать один рабочий материал для разных площадок: короткое видео в Instagram и Shorts, подробный рассказ в Telegram, законченный кейс на ArtStation.</p><button class="text-button" data-action="add-post" style="margin-top:15px">Записать идею ↗</button></div></div></div>`;
+    <div><div class="panel"><div class="panel-title"><h2>Публикации в этом месяце</h2><button class="text-button" data-nav="settings">Изменить цели ↗</button></div>${socialGoals()}<div class="subnote">Считаются посты со статусом «Опубликовано» и датой этого месяца.</div></div><div class="panel overview-lessons"><div class="panel-title"><h2>ВУЗ · пары на день</h2><button class="text-button" data-nav="university">Открыть журнал ↗</button></div>
+    ${renderOverviewLessons()}
+    </div><div class="panel"><div class="panel-title"><h2>Небольшое напоминание</h2></div><p style="color:var(--muted);font-size:13px">Можно использовать один рабочий материал для разных площадок: короткое видео в Instagram и Shorts, подробный рассказ в Telegram, законченный кейс на ArtStation.</p><button class="text-button" data-action="add-post" style="margin-top:15px">Записать идею ↗</button></div></div></div>`;
   }
   function renderTasks(){
     const list=visibleTasks();
@@ -305,15 +317,23 @@
     const denom=count.attended+count.missed+count.excused;
     return {...count,considered:denom,percent:denom?Math.round(count.attended/denom*100):null};
   }
+  function lessonStatusLabel(item,date,start=''){
+    if(item?.status==='attended')return 'Посещено';
+    if(item?.status&&ATTENDANCE_STATUSES[item.status])return ATTENDANCE_STATUSES[item.status];
+    if(date>today()||(date===today()&&start&&start>new Date().toTimeString().slice(0,5)))return 'Предстоит';
+    return 'Не отмечено';
+  }
+  function lessonCheck(x){
+    const record=x.record;
+    return `<label class="lesson-check"><input type="checkbox" class="check" data-attendance-check="1" data-attendance-id="${escapeHtml(record?.id||'')}" data-schedule-id="${escapeHtml(x.scheduleId||'')}" data-date="${escapeHtml(x.date)}" aria-label="Посетил: ${escapeHtml(x.subject)}" ${record?.status==='attended'?'checked':''}><span>Посетил</span></label>`;
+  }
   function attendanceLessonRow(x){
     const item=x.record, status=item?.status||'', title=LESSON_TYPES[x.kind]||'Пара';
     const meta=[title,x.start?(x.start+(x.end?'–'+x.end:'')):'',x.teacher||''].filter(Boolean).map(escapeHtml).join(' · ');
-    const actions=item?`<button class="icon-btn" data-action="edit-attendance" data-id="${escapeHtml(item.id)}" aria-label="Редактировать посещение">✎</button>`:
-      `<button class="icon-btn" data-action="edit-lesson-instance" data-id="${escapeHtml(x.scheduleId)}" data-date="${x.date}" aria-label="Заметка к паре">✎</button>`;
-    return `<div class="lesson-row ${status?'lesson-'+status:''}"><div class="lesson-main"><strong>${escapeHtml(x.subject)}</strong><span class="lesson-meta">${meta}</span>${item?.notes?`<small class="lesson-note">${escapeHtml(item.notes)}</small>`:''}</div>
-      <div class="lesson-actions"><select aria-label="Посещение: ${escapeHtml(x.subject)}" data-attendance-status="${escapeHtml(x.scheduleId||'')}" data-attendance-id="${escapeHtml(item?.id||'')}" data-date="${x.date}">
-        <option value="" ${!status?'selected':''}>Не отмечено</option>${optionList(ATTENDANCE_STATUSES,status)}</select>
-        ${actions}<button class="btn btn-small" data-action="make-academic-lesson" data-id="${escapeHtml(x.scheduleId||'')}" data-record="${escapeHtml(item?.id||'')}" data-date="${x.date}" title="Создать учебную работу по паре">+ Работа</button></div></div>`;
+    const actions=item?`<button class="icon-btn" data-action="edit-attendance" data-id="${escapeHtml(item.id)}" aria-label="Редактировать пару">✎</button><button class="icon-btn" data-action="delete-attendance" data-id="${escapeHtml(item.id)}" aria-label="Удалить запись о паре" title="Удалить пару из журнала">✕</button>`:
+      `<button class="icon-btn" data-action="edit-lesson-instance" data-id="${escapeHtml(x.scheduleId)}" data-date="${x.date}" aria-label="Редактировать пару">✎</button>`;
+    return `<div class="lesson-row ${status?'lesson-'+status:''}"><div class="lesson-main"><strong>${escapeHtml(x.subject)}</strong><span class="lesson-meta">${meta}</span><span class="lesson-status ${status==='attended'?'is-attended':''}">${escapeHtml(lessonStatusLabel(item,x.date,x.start))}</span>${item?.notes?`<small class="lesson-note">${escapeHtml(item.notes)}</small>`:''}</div>
+      <div class="lesson-actions">${lessonCheck(x)}${actions}<button class="btn btn-small" data-action="make-academic-lesson" data-id="${escapeHtml(x.scheduleId||'')}" data-record="${escapeHtml(item?.id||'')}" data-date="${x.date}" title="Создать учебную работу по паре">+ Работа</button></div></div>`;
   }
   function renderAttendanceGraph(){
     const weekly=[];const monday=getMonday(new Date());
@@ -329,11 +349,11 @@
     const rows=subjects.map(subject=>{const stats=attendanceStats(data.attendance.filter(x=>x.subject===subject));return `<tr><td>${escapeHtml(subject)}</td><td>${stats.attended}</td><td>${stats.missed}</td><td>${stats.excused}</td><td>${stats.percent===null?'—':stats.percent+'%'}</td></tr>`;}).join('');
     const needsAnchor=data.timetable.some(x=>x.parity!=='every')&&!data.universityWeekAnchor;
     return `<div class="study-summary"><div class="stat-card"><div class="stat-icon">✓</div><div class="stat-value">${counts.attended}</div><div class="stat-label">Посетил пар</div></div><div class="stat-card"><div class="stat-icon">○</div><div class="stat-value">${counts.missed}</div><div class="stat-label">Пропустил</div></div><div class="stat-card"><div class="stat-icon">◷</div><div class="stat-value">${counts.excused}</div><div class="stat-label">Уважительная причина</div></div><div class="stat-card"><div class="stat-icon">▥</div><div class="stat-value">${counts.percent===null?'—':counts.percent+'%'}</div><div class="stat-label">Посещаемость по отметкам</div></div></div>
-      <div class="panel"><div class="panel-title"><h2>Журнал посещений</h2><div class="actions-inline"><button class="btn btn-small" data-action="add-attendance">+ Разовая пара</button><button class="btn btn-small btn-accent" data-action="add-timetable">+ Пара в расписание</button></div></div>
-      <p class="subnote">Отмечай посещение после пары. Пустой статус означает «не отмечено», а не «пропущено».</p>
+      <div class="panel journal-panel"><div class="panel-title"><h2>Журнал посещений</h2><div class="actions-inline"><button class="btn btn-small btn-accent" data-action="add-attendance">+ Добавить пару в журнал</button><button class="btn btn-small" data-action="add-timetable">+ Повторяющееся расписание</button></div></div>
+      <p class="subnote">Добавляй разовые пары прямо в журнал, даже если они ещё предстоят. Галочка «Посетил» меняет только отметку, но не удаляет занятие. Для регулярных занятий есть повторяющееся расписание.</p>
       <div class="attendance-nav"><button class="btn btn-small" data-action="attendance-prev">← Ранее</button><button class="btn btn-small" data-action="attendance-today">Текущая неделя</button><button class="btn btn-small" data-action="attendance-next">Позже →</button><span>${prettyDate(from,true)} — ${prettyDate(to,true)}</span></div>
       ${needsAnchor?'<div class="warning">В расписании есть пары по чётным/нечётным неделям. Сначала укажи первую нечётную неделю ниже, иначе такие пары не появятся в журнале.</div>':''}
-      <div class="lesson-days">${[...grouped].map(([date,lessons])=>`<section class="lesson-day"><div class="lesson-day-title"><b>${new Date(date+'T12:00:00').toLocaleDateString('ru-RU',{weekday:'long',day:'numeric',month:'long'})}</b><span>${lessons.length} пар</span></div>${lessons.map(attendanceLessonRow).join('')}</section>`).join('')||'<div class="empty">На эти две недели пар нет. Добавь расписание или разовую пару.</div>'}</div></div>
+      <div class="lesson-days">${[...grouped].map(([date,lessons])=>`<section class="lesson-day"><div class="lesson-day-title"><b>${new Date(date+'T12:00:00').toLocaleDateString('ru-RU',{weekday:'long',day:'numeric',month:'long'})}</b><span>${lessons.length} пар</span></div>${lessons.map(attendanceLessonRow).join('')}</section>`).join('')||'<div class="empty">На эти две недели пар нет. Нажми «Добавить пару в журнал», чтобы запланировать занятие.</div>'}</div></div>
       <div class="attendance-panels"><div class="panel"><div class="panel-title"><h2>Посещаемость по неделям</h2></div>${renderAttendanceGraph()}</div>
       <div class="panel"><div class="panel-title"><h2>По дисциплинам</h2></div><div class="table-scroll"><table class="attendance-table"><thead><tr><th>Предмет</th><th>✓</th><th>Проп.</th><th>Уваж.</th><th>%</th></tr></thead><tbody>${rows||'<tr><td colspan="5">Пока нет дисциплин</td></tr>'}</tbody></table></div></div></div>
       <div class="panel"><div class="panel-title"><h2>Повторяющееся расписание</h2><button class="text-button" data-action="add-timetable">+ Добавить пару</button></div>
@@ -422,12 +442,12 @@
       if(id)item=data.attendance.find(x=>x.id===id);
       else if(typeof prefProject==='string'&&prefProject.includes('|')){
         const [scheduleId,date]=prefProject.split('|'),schedule=data.timetable.find(x=>x.id===scheduleId);
-        item=schedule?{scheduleId,date,subject:schedule.subject,teacher:schedule.teacher,kind:schedule.kind,start:schedule.start,end:schedule.end,status:'attended',notes:''}:null;
-      } else item={scheduleId:'',date:today(),subject:'',teacher:'',kind:'lecture',start:'09:00',end:'10:30',status:'attended',notes:''};
+        item=schedule?{scheduleId,date,subject:schedule.subject,teacher:schedule.teacher,kind:schedule.kind,start:schedule.start,end:schedule.end,status:'',notes:''}:null;
+      } else item={scheduleId:'',date:today(),subject:'',teacher:'',kind:'lecture',start:'09:00',end:'10:30',status:'',notes:''};
     }
     if(!item)return;
     if(type==='attendance')editMode.prefill={scheduleId:item.scheduleId||''};
-    document.querySelector('#editor-title').textContent=(type==='study-log'?'Записать ':id?'Редактировать ':'Добавить ')+(type==='subtask'?'подзадачу':type==='work'?'рабочую сессию':type==='task'?'задачу':type==='post'?'публикацию':type==='study'?'тему обучения':type==='study-log'?'занятие':type==='academic'?'работу по вузу':type==='session'?'сессию':type==='timetable'?'пару в расписании':type==='attendance'?'посещение':'проект');
+    document.querySelector('#editor-title').textContent=(type==='study-log'?'Записать ':id?'Редактировать ':'Добавить ')+(type==='subtask'?'подзадачу':type==='work'?'рабочую сессию':type==='task'?'задачу':type==='post'?'публикацию':type==='study'?'тему обучения':type==='study-log'?'занятие':type==='academic'?'работу по вузу':type==='session'?'сессию':type==='timetable'?'пару в расписании':type==='attendance'?'пару в журнал':'проект');
     const f=document.querySelector('#editor-fields');
     if(type==='task')f.innerHTML=field('Задача *','title',input('title',item.title,'required maxlength="300" placeholder="Например: подобрать материалы для стены"'))+field('Проект','projectId',select('projectId',projectOptions(item.projectId)))+`<div class="form-cols">${field('Срок','due',input('due',item.due,'type="date"'))}${field('Приоритет','priority',select('priority',optionList(PRIORITIES,item.priority)))}</div>`+field('Состояние','status',select('status',optionList(TASK_STATES,item.status)))+field('Заметки','notes',`<textarea id="fld-notes" name="notes" maxlength="10000" placeholder="Коротко о следующем шаге">${escapeHtml(item.notes)}</textarea>`);
     if(type==='subtask')f.innerHTML=`<p class="dialog-context">Подзадачи не имеют дедлайна. Отмечай каждый шаг по мере выполнения.</p>`+field('Название шага *','title',input('title',item.title,'required maxlength="300" placeholder="Например: подготовить UV-развёртку"'));
@@ -437,7 +457,7 @@
     if(type==='study-log')f.innerHTML=`<p class="dialog-context">Тема: ${escapeHtml(item.title)}</p><div class="form-cols">${field('Дата занятия','date',input('date',today(),'type="date" required'))}${field('Продолжительность, мин','minutes',input('minutes',30,'type="number" min="1" max="1440" required'))}</div>`+field('Что получилось / что изучил','note',`<textarea id="fld-note" name="note" maxlength="1000" placeholder="Например: исправил веса на рукавах и проверил деформации"></textarea>`);
     if(type==='academic')f.innerHTML=field('Название работы / аттестации *','title',input('title',item.title,'required maxlength="300" placeholder="Например: Лабораторная № 2"'))+field('Дисциплина','subject',input('subject',item.subject,'maxlength="160" placeholder="Например: Деревянные конструкции"'))+`<div class="form-cols">${field('Тип','type',select('type',optionList(ACADEMIC_TYPES,item.type)))}${field('Статус','status',select('status',optionList(ACADEMIC_STATUSES,item.status)))}</div>`+`<div class="form-cols">${field('Дедлайн / дата экзамена','due',input('due',item.due,'type="date"'))}${field('Приоритет','priority',select('priority',optionList(PRIORITIES,item.priority)))}</div>`+field('Сессия','sessionId',select('sessionId',sessionOptions(item.sessionId)))+field('Преподаватель (необязательно)','teacher',input('teacher',item.teacher,'maxlength="160" placeholder="Фамилия или контакт"'))+field('Следующее действие','nextStep',input('nextStep',item.nextStep,'maxlength="500" placeholder="Закончить расчёт и сдать отчёт"'))+field('Примечания','notes',`<textarea id="fld-notes" name="notes" maxlength="10000" placeholder="Что требуется, где материалы, условия сдачи…">${escapeHtml(item.notes)}</textarea>`);
     if(type==='timetable')f.innerHTML=field('Дисциплина *','subject',input('subject',item.subject,'required maxlength="160" placeholder="Например: Строительная механика"'))+`<div class="form-cols">${field('День недели','weekday',select('weekday',optionList(WEEK_DAYS,item.weekday)))}${field('Тип пары','kind',select('kind',optionList(LESSON_TYPES,item.kind)))}</div>`+`<div class="form-cols">${field('Начало','start',input('start',item.start,'type="time" required'))}${field('Конец','end',input('end',item.end,'type="time" required'))}</div>`+field('Повторение','parity',select('parity',optionList(WEEK_PARITIES,item.parity)))+field('Преподаватель','teacher',input('teacher',item.teacher,'maxlength="160"'))+field('Заметки','notes',`<textarea id="fld-notes" name="notes" maxlength="1000">${escapeHtml(item.notes)}</textarea>`);
-    if(type==='attendance')f.innerHTML=field('Дисциплина *','subject',input('subject',item.subject,'required maxlength="160"'))+`<div class="form-cols">${field('Дата пары','date',input('date',item.date,'type="date" required'))}${field('Статус','status',select('status',optionList(ATTENDANCE_STATUSES,item.status)))}</div>`+`<div class="form-cols">${field('Тип пары','kind',select('kind',optionList(LESSON_TYPES,item.kind)))}${field('Преподаватель','teacher',input('teacher',item.teacher,'maxlength="160"'))}</div>`+`<div class="form-cols">${field('Начало','start',input('start',item.start,'type="time"'))}${field('Конец','end',input('end',item.end,'type="time"'))}</div>`+field('Заметки','notes',`<textarea id="fld-notes" name="notes" maxlength="1500" placeholder="Например: тема лекции, что задали">${escapeHtml(item.notes)}</textarea>`);
+    if(type==='attendance')f.innerHTML=field('Дисциплина *','subject',input('subject',item.subject,'required maxlength="160"'))+`<div class="form-cols">${field('Дата пары','date',input('date',item.date,'type="date" required'))}${field('Отметка посещения','status',select('status',`<option value="" ${!item.status?'selected':''}>Не отмечено (пара остаётся в журнале)</option>`+optionList(ATTENDANCE_STATUSES,item.status)))}</div>`+`<div class="form-cols">${field('Тип пары','kind',select('kind',optionList(LESSON_TYPES,item.kind)))}${field('Преподаватель','teacher',input('teacher',item.teacher,'maxlength="160"'))}</div>`+`<div class="form-cols">${field('Начало','start',input('start',item.start,'type="time"'))}${field('Конец','end',input('end',item.end,'type="time"'))}</div>`+field('Заметки','notes',`<textarea id="fld-notes" name="notes" maxlength="1500" placeholder="Например: тема лекции, что задали">${escapeHtml(item.notes)}</textarea>`);
     if(type==='session')f.innerHTML=field('Название сессии *','title',input('title',item.title,'required maxlength="120" placeholder="Например: Зимняя сессия 2026/27"'))+`<div class="form-cols">${field('Начало','start',input('start',item.start,'type="date"'))}${field('Конец','end',input('end',item.end,'type="date"'))}</div>`+field('Примечания','notes',`<textarea id="fld-notes" name="notes" maxlength="10000" placeholder="Допуски, расписание, важные особенности">${escapeHtml(item.notes)}</textarea>`);
     if(type==='project')f.innerHTML=field('Название проекта *','name',input('name',item.name,'required maxlength="90" placeholder="Новый проект"'))+field('Цвет метки','color',`<select id="fld-color" name="color">${COLORS.map(c=>`<option value="${c}" ${item.color===c?'selected':''}>${c}</option>`).join('')}</select>`);
     editor.showModal();setTimeout(()=>f.querySelector('input')?.focus(),50);
@@ -459,8 +479,9 @@
     if(type==='attendance'){
       const subject=txt('subject'),date=txt('date');if(!subject||!hasDate(date)){alert('Укажи название предмета и дату.');return;}
       const base=editMode.prefill||{};const linked=base.scheduleId?data.attendance.find(x=>x.scheduleId===base.scheduleId&&x.date===date):null;
-      const entry={id:id||linked?.id||safeId(),scheduleId:base.scheduleId||'',date,subject:subject.slice(0,160),teacher:txt('teacher').slice(0,160),kind:LESSON_TYPES[txt('kind')]?txt('kind'):'other',start:hhmm(txt('start'))?txt('start'):'',end:hhmm(txt('end'))?txt('end'):'',status:ATTENDANCE_STATUSES[txt('status')]?txt('status'):'attended',notes:txt('notes').slice(0,1500)};
+      const entry={id:id||linked?.id||safeId(),scheduleId:base.scheduleId||'',date,subject:subject.slice(0,160),teacher:txt('teacher').slice(0,160),kind:LESSON_TYPES[txt('kind')]?txt('kind'):'other',start:hhmm(txt('start'))?txt('start'):'',end:hhmm(txt('end'))?txt('end'):'',status:ATTENDANCE_STATUSES[txt('status')]?txt('status'):'',notes:txt('notes').slice(0,1500)};
       upsert(data.attendance,entry);
+      if(date<attendanceStart||date>iso(shiftDate(dateObj(attendanceStart),13))) attendanceStart=iso(getMonday(dateObj(date)));
     }
     if(type==='session'){const title=txt('title');if(!title)return;const start=hasDate(txt('start'))?txt('start'):'';const end=hasDate(txt('end'))?txt('end'):'';if(start&&end&&start>end){alert('Конец сессии должен быть не раньше её начала.');return;}upsert(data.universitySessions,{id,title:title.slice(0,120),start,end,notes:txt('notes').slice(0,10000)});}
     if(type==='project'){const name=txt('name');if(!name)return;const entry={id,name:name.slice(0,90),color:COLORS.includes(txt('color'))?txt('color'):COLORS[0]};upsert(data.projects,entry);}
@@ -503,6 +524,9 @@
     const btn=e.target.closest('[data-action]');if(!btn)return;const id=btn.dataset.id,p=btn.dataset.project||'';
     switch(btn.dataset.action){
       case 'uni-tab':if(['attendance','works','sessions'].includes(btn.dataset.tab)){universityTab=btn.dataset.tab;render();}break;
+      case 'overview-day-prev':overviewDate=iso(shiftDate(dateObj(overviewDate),-1));render();break;
+      case 'overview-day-next':overviewDate=iso(shiftDate(dateObj(overviewDate),1));render();break;
+      case 'overview-day-today':overviewDate=today();render();break;
       case 'attendance-prev':attendanceStart=iso(shiftDate(dateObj(attendanceStart),-14));render();break;
       case 'attendance-next':attendanceStart=iso(shiftDate(dateObj(attendanceStart),14));render();break;
       case 'attendance-today':attendanceStart=iso(getMonday(new Date()));render();break;
@@ -511,6 +535,7 @@
       case 'delete-timetable':remove('timetable',id);break;
       case 'add-attendance':openEditor('attendance');break;
       case 'edit-attendance':openEditor('attendance',id);break;
+      case 'delete-attendance':remove('attendance',id);break;
       case 'edit-lesson-instance':openEditor('attendance',null,id+'|'+btn.dataset.date);break;
       case 'make-academic-lesson':{
         const record=data.attendance.find(x=>x.id===btn.dataset.record);
@@ -550,14 +575,15 @@
     if(e.target.matches('#task-sort')){if(TASK_SORTS[e.target.value]){data.taskSort=e.target.value;save();render();}}
     if(e.target.matches('#task-filter')){taskFilter=e.target.value;render();}
     if(e.target.matches('#uni-week-anchor')){data.universityWeekAnchor=hasDate(e.target.value)?e.target.value:'';save();render();toast('Первая нечётная неделя сохранена');}
-    if(e.target.matches('[data-attendance-status]')){
+    if(e.target.matches('[data-attendance-check]')){
       const el=e.target,record=data.attendance.find(x=>x.id===el.dataset.attendanceId);
-      const schedule=data.timetable.find(x=>x.id===el.dataset.attendanceStatus);
-      if(!el.value){if(record)data.attendance=data.attendance.filter(x=>x.id!==record.id);save();render();return;}
-      if(!ATTENDANCE_STATUSES[el.value])return;
-      const source=record||schedule;if(!source)return;
-      const entry={id:record?.id||safeId(),scheduleId:record?.scheduleId||schedule?.id||'',date:el.dataset.date,subject:source.subject,teacher:source.teacher||'',kind:source.kind||'other',start:source.start||'',end:source.end||'',status:el.value,notes:record?.notes||''};
-      upsert(data.attendance,entry);save();render();toast('Посещаемость отмечена');
+      const schedule=data.timetable.find(x=>x.id===el.dataset.scheduleId);
+      const source=record||schedule;
+      if(!source)return;
+      const entry={id:record?.id||safeId(),scheduleId:record?.scheduleId||schedule?.id||'',date:el.dataset.date,
+        subject:source.subject,teacher:source.teacher||'',kind:source.kind||'other',start:source.start||'',end:source.end||'',
+        status:el.checked?'attended':'',notes:record?.notes||''};
+      upsert(data.attendance,entry);save();render();toast(el.checked?'Посещение отмечено':'Отметка снята, пара осталась в журнале');
     }
     if(e.target.matches('#academic-filter')){academicFilter=e.target.value;render();}
     if(e.target.matches('#academic-subject-filter')){academicSubjectFilter=e.target.value;render();}

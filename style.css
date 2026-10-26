@@ -314,3 +314,35 @@ select { -webkit-appearance: auto; appearance: auto; }
   .attendance-bar-col small{font-size:9px}
 }
 @media(max-width:370px){.uni-tab{font-size:10px;padding:9px 3px}.attendance-bar-track{width:100%}}
+
+/* МАСТЕРСКАЯ v2.7: компактный обзор и журнал с постоянными записями пар. */
+.hero{padding:23px 30px;min-height:0;align-items:center}
+.hero h1{font-size:clamp(24px,2vw,31px);line-height:1.19;margin:8px 0}
+.hero p{margin:7px 0 14px;max-width:610px;line-height:1.5}
+.hero .btn{min-height:36px;padding:9px 14px}
+.hero-stat strong{font-size:31px}
+.lesson-check{display:inline-flex;align-items:center;gap:7px;cursor:pointer;white-space:nowrap;color:#e3e9ee;font-size:12px;background:#233043;border:1px solid #45566b;border-radius:9px;padding:7px 10px;min-height:42px}
+.lesson-check .check{flex-shrink:0;width:18px;height:18px;margin:0;accent-color:#85b69e;cursor:pointer}
+.lesson-check:has(input:checked){background:#243b36;border-color:#618979}
+.lesson-status{display:inline-flex;align-self:flex-start;padding:3px 8px;border-radius:6px;background:#293345;color:#aebed0;font-size:11px;font-weight:600}
+.lesson-status.is-attended{background:#284139;color:#b8ddc8}
+.overview-day-nav{display:flex;gap:7px;align-items:center;justify-content:space-between;margin:0 0 8px;flex-wrap:wrap}
+.overview-day-nav strong{font-size:12px;flex:1;text-align:center;text-transform:capitalize;color:#ebd1a1}
+.overview-attendance-count{font-size:11px;color:#aab7c7;padding-bottom:10px;border-bottom:1px solid var(--border2)}
+.overview-lesson-row{display:flex;align-items:center;gap:12px;justify-content:space-between;padding:11px 0;border-bottom:1px solid var(--border2)}
+.overview-lesson-row:last-child{border-bottom:0}
+.overview-lesson-main{display:flex;flex-direction:column;gap:4px;min-width:0;overflow-wrap:anywhere}
+.overview-lesson-main strong{font-size:12px}
+.overview-lesson-main span{font-size:11px;color:var(--muted)}
+@media(max-width:720px){.hero{padding:17px 18px}.hero h1{font-size:23px}.hero p{font-size:12px;margin-bottom:10px}.hero-stat{display:none}.lesson-check{min-height:44px}.lesson-actions{gap:8px}.overview-lesson-row{align-items:flex-start}.overview-day-nav strong{flex:1 1 145px}}
+@media(max-width:360px){.hero{padding:15px}.hero h1{font-size:21px}.overview-lesson-row{flex-direction:column;align-items:flex-start}.overview-lesson-row .lesson-check{align-self:flex-start}}
+
+/* Не даём длинным кнопкам журнала раздвигать экран iPhone SE. */
+.journal-panel>.panel-title{gap:12px}
+.journal-panel>.panel-title .actions-inline{min-width:0;display:flex;gap:8px;flex-wrap:wrap}
+.journal-panel>.panel-title .actions-inline .btn{max-width:100%;white-space:normal;text-align:center}
+@media(max-width:720px){
+  .journal-panel>.panel-title{display:flex;flex-direction:column;align-items:stretch;gap:10px}
+  .journal-panel>.panel-title .actions-inline{width:100%}
+  .journal-panel>.panel-title .actions-inline .btn{flex:1 1 160px;min-width:0;overflow-wrap:anywhere}
+}
