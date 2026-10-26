@@ -259,3 +259,58 @@ select { -webkit-appearance: auto; appearance: auto; }
   .project-detail-summary .stat-label{font-size:10px}
   .project-task-row{gap:8px}
 }
+
+/* МАСТЕРСКАЯ v2.6 — ВУЗ, расписание и журнал посещаемости */
+.university-tabs{display:flex;gap:7px;flex-wrap:wrap;margin:0 0 22px;border-bottom:1px solid var(--border2);padding-bottom:13px}
+.uni-tab{border:1px solid #414c60;background:#1c2432;border-radius:9px;padding:12px 17px;color:#cad2df;cursor:pointer;font-size:13px;min-height:44px}
+.uni-tab.active{background:#3a3325;color:#f2d69e;border-color:#997a41;font-weight:700}
+.attendance-nav{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin:19px 0}
+.attendance-nav>span{margin-left:auto;font-size:12px;color:#d2be94}
+.lesson-days{display:flex;flex-direction:column;gap:15px}
+.lesson-day{border:1px solid var(--border2);border-radius:12px;overflow:hidden;min-width:0}
+.lesson-day-title{display:flex;gap:10px;align-items:center;justify-content:space-between;background:#262d3b;padding:12px 16px;color:#f0e6d4;font-size:13px}
+.lesson-day-title>span{color:#aab4c5;font-size:11px}
+.lesson-row{display:flex;gap:15px;align-items:center;justify-content:space-between;padding:12px 16px;border-top:1px solid #343e50;min-width:0}
+.lesson-main{display:flex;flex-direction:column;gap:4px;min-width:0;flex:1}
+.lesson-main strong{font-size:13px;overflow-wrap:anywhere}
+.lesson-meta{font-size:11px;line-height:1.6;color:var(--muted);overflow-wrap:anywhere}
+.lesson-note{font-size:11px;color:#d4c7ae;overflow-wrap:anywhere}
+.lesson-actions{display:flex;align-items:center;gap:6px;flex-shrink:0}
+.lesson-actions select{color:#e5eaf2;background:#202b3a;border:1px solid #455368;border-radius:8px;padding:10px 8px;font-size:12px;max-width:175px;min-height:42px}
+.lesson-attended{border-left:3px solid #729987}.lesson-missed{border-left:3px solid #b46c68}.lesson-excused{border-left:3px solid #aa996d}.lesson-cancelled{opacity:.7;border-left:3px solid #707a8e}
+.attendance-panels{display:grid;grid-template-columns:1fr 1fr;gap:16px;align-items:start}
+.attendance-chart{height:195px;display:grid;grid-template-columns:repeat(6,minmax(0,1fr));gap:11px;margin:10px 0 10px;align-items:end}
+.attendance-bar-col{display:flex;flex-direction:column;align-items:center;justify-content:flex-end;gap:5px;min-width:0;font-size:11px;color:#e4c48a}
+.attendance-bar-col small{font-size:10px;color:#a5b0c0;text-align:center}
+.attendance-bar-track{height:130px;width:min(42px,100%);border-radius:6px;background:#273447;display:flex;align-items:end;overflow:hidden}
+.attendance-bar-fill{background:linear-gradient(0deg,#99783f,#deb966);width:100%;border-radius:4px 4px 0 0;min-height:0}
+.table-scroll{max-width:100%;overflow-x:auto}
+.attendance-table{border-collapse:collapse;width:100%;font-size:12px}
+.attendance-table td,.attendance-table th{padding:10px 6px;text-align:left;border-bottom:1px solid var(--border2)}
+.attendance-table th{color:#e5c98b;font-size:11px}
+.attendance-table td:first-child{min-width:130px;overflow-wrap:anywhere}
+.week-anchor{display:flex;gap:12px;flex-wrap:wrap;align-items:center;border:1px dashed #62604e;padding:14px;margin:10px 0 16px;border-radius:9px}
+.week-anchor label{font-size:12px;color:#ddc99d;font-weight:650}
+.week-anchor input{background:#151f2b;color:#fff;border:1px solid #46556b;border-radius:8px;padding:10px;max-width:100%;min-height:43px}
+.week-anchor span{color:var(--muted);font-size:11px;flex:1 1 200px}
+.timetable-list{display:flex;flex-direction:column}
+.timetable-row{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:13px 0;border-bottom:1px solid var(--border2)}
+.timetable-row>div:first-child{min-width:0}
+.timetable-row strong{font-size:13px;overflow-wrap:anywhere}
+.calendar-item.attendance{background:#233a3b;color:#b6e0d7;border-left-color:#70a79b}
+.agenda-type.attendance{color:#7fb7ac}
+@media(max-width:1100px){.attendance-panels{grid-template-columns:1fr}}
+@media(max-width:720px){
+  .university-tabs{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:5px}
+  .uni-tab{padding:10px 6px;font-size:11px;min-width:0}
+  .attendance-nav{gap:6px}.attendance-nav>.btn{flex:1 1 auto}
+  .attendance-nav>span{width:100%;text-align:center;margin:5px 0 0}
+  .lesson-row{flex-direction:column;align-items:stretch;gap:10px;padding:12px}
+  .lesson-actions{flex-wrap:wrap;width:100%}
+  .lesson-actions select{flex:1 1 160px;min-width:0;max-width:none;font-size:16px}
+  .lesson-actions .btn{min-height:43px}
+  .week-anchor{align-items:stretch;flex-direction:column}
+  .week-anchor>input{width:100%}
+  .attendance-bar-col small{font-size:9px}
+}
+@media(max-width:370px){.uni-tab{font-size:10px;padding:9px 3px}.attendance-bar-track{width:100%}}
