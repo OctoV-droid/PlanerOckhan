@@ -1,4 +1,4 @@
-/* МАСТЕРСКАЯ v2.8 — проекты с задачами, ручной порядок, подзадачи и активность.
+/* МАСТЕРСКАЯ v2.9 — проекты с задачами, ручной порядок, подзадачи и активность.
    Данные хранятся ТОЛЬКО в localStorage этого браузера.
    Ни токенов GitHub, ни секретов, ни запросов к внешним сервисам. */
 (() => {
@@ -23,7 +23,7 @@
   const ATTENDANCE_STATUSES = {attended:'Посетил',missed:'Пропустил',excused:'Уважительная причина',cancelled:'Отменена'};
   const COLORS = ['#b8a2d1','#d5bd88','#91b9b0','#96accb','#ce998c','#c0c5a1'];
   const defaultData = () => ({
-    version:8,
+    version:9,
     taskSort:'manual',
     projects:[
       {id:'tif',name:'TIF / Новониколаевск',color:'#a5a5b8'},
@@ -31,7 +31,7 @@
       {id:'portfolio',name:'Портфолио и развитие',color:'#92baa8'},
       {id:'personal',name:'Личное творчество',color:'#b59acc'}
     ],
-    tasks:[], habits:[], habitChecks:[], posts:[], study:[], academic:[], universitySessions:[], timetable:[], attendance:[], universityWeekAnchor:'', workSessions:[], activityLog:[],
+    tasks:[], habits:[], habitChecks:[], posts:[], study:[], academic:[], universitySubjects:[], universitySessions:[], timetable:[], attendance:[], universityWeekAnchor:'', workSessions:[], activityLog:[],
     goals:{'Telegram':4,'Instagram':3,'YouTube Shorts':2,'ВКонтакте':1,'ArtStation':1}
   });
   const app = document.querySelector('#app');
@@ -47,9 +47,10 @@
   let taskFilter = 'doing';
   let selectedProjectId = null;
   let draggedTaskId = null;
-  let academicFilter = 'doing';
+  let academicFilter = 'all';
   let academicSubjectFilter = 'all';
-  let universityTab = 'attendance';
+  let academicSessionFilter = 'all';
+  let universityTab = 'works';
   let attendanceStart = iso(getMonday(new Date()));
   let overviewDate = today();
   let activityDays = 30;
@@ -147,8 +148,13 @@
       id:String(x.id||safeId()).slice(0,90),title:x.title.slice(0,300),subject:String(x.subject||'').slice(0,160),
       type:ACADEMIC_TYPES[x.type]?x.type:'other',status:ACADEMIC_STATUSES[x.status]?x.status:'planned',
       due:hasDate(x.due)?x.due:'',priority:PRIORITIES[x.priority]?x.priority:'normal',sessionId:String(x.sessionId||'').slice(0,90),
-      teacher:String(x.teacher||'').slice(0,160),nextStep:String(x.nextStep||'').slice(0,500),notes:String(x.notes||'').slice(0,10000)
+      teacher:String(x.teacher||'').slice(0,160),subjectId:String(x.subjectId||'').slice(0,90),nextStep:String(x.nextStep||'').slice(0,500),notes:String(x.notes||'').slice(0,10000),subtasks:window.MasterskayaUniversity.steps(x.subtasks,safeId)
     }));
+    if(Array.isArray(raw.universitySubjects))d.universitySubjects=raw.universitySubjects.slice(0,1000).filter(x=>x&&typeof x.title==='string').map(x=>({
+      id:String(x.id||safeId()).slice(0,90),title:x.title.slice(0,160),teacher:String(x.teacher||'').slice(0,160),
+      sessionId:String(x.sessionId||'').slice(0,90),due:hasDate(x.due)?x.due:'',debt:x.debt===true,notes:String(x.notes||'').slice(0,10000)
+    }));
+    window.MasterskayaUniversity.migrate(d.universitySubjects,d.academic,safeId);
     d.universityWeekAnchor=hasDate(raw.universityWeekAnchor)?raw.universityWeekAnchor:'';
     if(Array.isArray(raw.timetable))d.timetable=raw.timetable.slice(0,500).filter(x=>x&&typeof x.subject==='string').map(x=>({
       id:String(x.id||safeId()).slice(0,90),subject:x.subject.slice(0,160),teacher:String(x.teacher||'').slice(0,160),
@@ -317,22 +323,33 @@
   function formatMinutes(v){const h=Math.floor(v/60),m=v%60;return [h?`${h} ч`:'',m?`${m} мин`:''].filter(Boolean).join(' ')||'0 мин';}
   function universitySessionLabel(id){return data.universitySessions.find(x=>x.id===id)?.title||'Без сессии';}
   function academicOverdue(x){return x.status!=='passed'&&Boolean(x.due)&&x.due<today();}
-  function academicCard(x){
-    const overdue=academicOverdue(x),isDebt=x.status==='debt';
-    const related=x.sessionId?` · ${escapeHtml(universitySessionLabel(x.sessionId))}`:'';
-    return `<article class="academic-card ${isDebt?'academic-debt':''}">
-      <div class="academic-card-head"><span class="tag">${ACADEMIC_TYPES[x.type]}</span><span class="pill ${x.status==='passed'?'done':isDebt||overdue?'overdue':''}">${ACADEMIC_STATUSES[x.status]}</span></div>
-      <h2 class="academic-title">${escapeHtml(x.title)}</h2>
-      <p class="academic-sub">${escapeHtml(x.subject||'Дисциплина не указана')}${related}</p>
-      <div class="academic-meta"><span>${x.due?`<b class="${overdue?'urgent':''}">${overdue?'Просрочено: ':'Сдать до: '}${prettyDate(x.due,true)}</b>`:'Без дедлайна'}</span><span>${PRIORITIES[x.priority]}</span>${x.teacher?`<span>Преподаватель: ${escapeHtml(x.teacher)}</span>`:''}</div>
-      ${x.nextStep?`<div class="study-next"><b>Следующий шаг:</b> ${escapeHtml(x.nextStep)}</div>`:''}
-      ${x.notes?`<div class="academic-notes">${escapeHtml(x.notes)}</div>`:''}
-      <div class="academic-bottom"><select data-academic-status="${escapeHtml(x.id)}" aria-label="Статус: ${escapeHtml(x.title)}">${optionList(ACADEMIC_STATUSES,x.status)}</select><div class="study-buttons"><button class="icon-btn" data-action="edit-academic" data-id="${escapeHtml(x.id)}" aria-label="Редактировать работу">✎</button><button class="icon-btn" data-action="delete-academic" data-id="${escapeHtml(x.id)}" aria-label="Удалить работу">✕</button></div></div>
+  function uniSubject(id){return data.universitySubjects.find(s=>s.id===id);}
+  function uniWorkSteps(work){const list=work.subtasks||[];const done=list.filter(s=>s.done).length;return {done,total:list.length,pct:list.length?Math.round(done/list.length*100):0};}
+  function subjectOptions(value){return `<option value="">Выбери предмет</option>`+data.universitySubjects.map(s=>`<option value="${escapeHtml(s.id)}" ${value===s.id?'selected':''}>${escapeHtml(s.title)}${s.sessionId?' · '+escapeHtml(universitySessionLabel(s.sessionId)):''}</option>`).join('');}
+  function uniWorkCard(x){
+    const overdue=academicOverdue(x),count=uniWorkSteps(x);
+    const steps=(x.subtasks||[]).map(st=>`<div class="uni-step"><label class="uni-step-label"><input type="checkbox" class="check" data-uni-step="${escapeHtml(st.id)}" data-work="${escapeHtml(x.id)}" ${st.done?'checked':''}><span class="${st.done?'uni-checked':''}">${escapeHtml(st.title)}</span></label><div class="study-buttons"><button class="icon-btn" data-action="edit-uni-step" data-id="${escapeHtml(st.id)}" data-work="${escapeHtml(x.id)}" title="Изменить шаг" aria-label="Изменить шаг">✎</button><button class="icon-btn" data-action="delete-uni-step" data-id="${escapeHtml(st.id)}" data-work="${escapeHtml(x.id)}" title="Удалить шаг" aria-label="Удалить шаг">✕</button></div></div>`).join('');
+    return `<article class="academic-card uni-work ${x.status==='passed'?'uni-work-done':''}" data-uni-work-id="${escapeHtml(x.id)}">
+      <div class="uni-work-top"><label class="uni-work-complete"><input type="checkbox" class="check" data-uni-work-check="${escapeHtml(x.id)}" ${x.status==='passed'?'checked':''} aria-label="Закрыть работу ${escapeHtml(x.title)}"></label><div class="uni-work-body"><div class="academic-card-head"><span class="tag">${ACADEMIC_TYPES[x.type]}</span><span class="pill ${x.status==='passed'?'done':x.status==='debt'||overdue?'overdue':''}">${ACADEMIC_STATUSES[x.status]}</span></div><h3 class="uni-work-title">${escapeHtml(x.title)}</h3><div class="row-sub">${x.due?`${overdue?'Просрочено: ':'Срок: '}${prettyDate(x.due,true)}`:'Без срока'} · ${PRIORITIES[x.priority]} · Шаги: ${count.done}/${count.total}</div></div><div class="study-buttons"><button class="icon-btn" data-action="edit-academic" data-id="${escapeHtml(x.id)}" title="Редактировать работу" aria-label="Редактировать работу">✎</button><button class="icon-btn" data-action="delete-academic" data-id="${escapeHtml(x.id)}" title="Удалить работу" aria-label="Удалить работу">✕</button></div></div>
+      ${count.total?`<div class="progress uni-work-progress"><span style="width:${count.pct}%"></span></div>`:''}
+      <div class="uni-steps" aria-label="Подзадачи работы">${steps}</div>
+      <form class="uni-quick-form" data-uni-quick="${escapeHtml(x.id)}"><input name="step" required maxlength="300" placeholder="Новый маленький шаг (например, чертёж №1)" aria-label="Новая подзадача для ${escapeHtml(x.title)}"><button class="btn btn-small" type="submit">+ Шаг</button></form>
+      ${count.total&&count.done===count.total&&x.status!=='passed'?'<p class="subnote">Все шаги готовы. Отметь работу закрытой после сдачи или принятия преподавателем.</p>':''}
+      ${x.nextStep?`<p class="row-sub">Следующее действие: ${escapeHtml(x.nextStep)}</p>`:''}${x.notes?`<p class="academic-notes">${escapeHtml(x.notes)}</p>`:''}
+      <div class="uni-work-footer"><select data-academic-status="${escapeHtml(x.id)}" aria-label="Статус работы ${escapeHtml(x.title)}">${optionList(ACADEMIC_STATUSES,x.status)}</select></div>
     </article>`;
+  }
+  function uniSubjectCard(sub,works){
+    const state=window.MasterskayaUniversity.condition(sub,works,today());
+    const closed=works.filter(x=>x.status==='passed').length;
+    const filtered=works.filter(x=>academicFilter==='all'||(academicFilter==='doing'?['progress','ready','submitted','debt'].includes(x.status):academicFilter==='planned'?x.status==='planned':academicFilter==='passed'?x.status==='passed':academicFilter==='debt'?x.status==='debt'||academicOverdue(x):ACADEMIC_EXAMS.has(x.type)));
+    filtered.sort((a,b)=>(a.due||'9999').localeCompare(b.due||'9999'));
+    return `<section class="panel uni-subject" data-uni-subject-id="${escapeHtml(sub.id)}"><div class="uni-subject-head"><div class="uni-subject-info"><div class="eyebrow">ПРЕДМЕТ</div><h2>${escapeHtml(sub.title)}</h2><p class="uni-subject-meta">${sub.teacher?'Преподаватель: '+escapeHtml(sub.teacher)+' · ':''}${escapeHtml(universitySessionLabel(sub.sessionId))}${sub.due?' · Общий срок: '+prettyDate(sub.due,true):''}</p><div class="uni-subject-tags"><span class="pill ${state.key==='debt'||state.key==='overdue'?'overdue':state.key==='complete'?'done':''}">${state.label}</span><span class="tag">${closed} / ${works.length} работ закрыто</span></div>${sub.notes?`<p class="row-sub">${escapeHtml(sub.notes)}</p>`:''}</div><div class="study-buttons"><button class="btn btn-small btn-accent" data-action="add-academic" data-subject="${escapeHtml(sub.id)}">+ Работа</button><button class="icon-btn" data-action="edit-uni-subject" data-id="${escapeHtml(sub.id)}" title="Редактировать предмет" aria-label="Редактировать предмет">✎</button><button class="icon-btn" data-action="delete-uni-subject" data-id="${escapeHtml(sub.id)}" title="Удалить предмет" aria-label="Удалить предмет">✕</button></div></div>
+      <div class="uni-work-list">${filtered.map(uniWorkCard).join('')||'<div class="empty">В выбранной категории работ нет. Нажми «+ Работа», чтобы добавить ЛР, КР или экзамен.</div>'}</div></section>`;
   }
   function renderUniversity(){
     const tabs=[['attendance','Посещаемость'],['works','Работы и долги'],['sessions','Сессии']];
-    return `${heading('УНИВЕРСИТЕТ','ВУЗ','Расписание, журнал посещений, учебные работы и сессии.','<button class="btn btn-accent" data-action="add-academic">+ Учебная работа</button>')}
+    return `${heading('УНИВЕРСИТЕТ','ВУЗ','Предметы, вложенные работы, подзадачи, посещаемость и сессии.','<button class="btn btn-accent" data-action="add-uni-subject">+ Предмет</button>')}
       <div class="university-tabs" role="group" aria-label="Разделы университета">${tabs.map(([key,title])=>`<button class="uni-tab ${universityTab===key?'active':''}" type="button" data-action="uni-tab" data-tab="${key}" aria-pressed="${universityTab===key}">${title}</button>`).join('')}</div>
       ${universityTab==='attendance'?renderUniversityAttendance():universityTab==='works'?renderUniversityWorks():renderUniversitySessions()}`;
   }
@@ -417,26 +434,23 @@
       <p class="subnote">Изменение или удаление расписания не стирает уже сделанные отметки о посещениях.</p></div>`;
   }
   function renderUniversityWorks(){
-    const total=data.academic.length;
-    const debts=data.academic.filter(x=>x.status==='debt').length;
-    const overdue=data.academic.filter(x=>academicOverdue(x)&&x.status!=='debt').length;
-    const upcoming=data.academic.filter(x=>x.status!=='passed'&&x.due&&x.due>=today()&&x.due<=iso(shiftDate(new Date(),14))).length;
-    const passed=data.academic.filter(x=>x.status==='passed').length;
-    const filtered=[...data.academic].filter(x=>(academicSubjectFilter==='all'||x.subject===academicSubjectFilter)&&(academicFilter==='all'||(academicFilter==='doing'?['progress','ready','submitted','debt'].includes(x.status):academicFilter==='planned'?x.status==='planned':academicFilter==='passed'?x.status==='passed':academicFilter==='debt'?x.status==='debt'||academicOverdue(x):ACADEMIC_EXAMS.has(x.type))));
-    filtered.sort((a,b)=>Number(b.status==='debt')-Number(a.status==='debt')||Number(academicOverdue(b))-Number(academicOverdue(a))||(a.due||'9999').localeCompare(b.due||'9999'));
-    const sessions=[...data.universitySessions].sort((a,b)=>(a.start||'9999').localeCompare(b.start||'9999'));
-    const subjects=[...new Set(data.academic.map(x=>x.subject).filter(Boolean))].sort((a,b)=>a.localeCompare(b,'ru'));
-    return `      <div class="study-summary"><div class="stat-card"><div class="stat-icon">!</div><div class="stat-value">${debts}</div><div class="stat-label">Учебных долгов</div></div><div class="stat-card"><div class="stat-icon">◷</div><div class="stat-value">${overdue}</div><div class="stat-label">Просрочено без статуса «Долг»</div></div><div class="stat-card"><div class="stat-icon">▤</div><div class="stat-value">${upcoming}</div><div class="stat-label">Сдач в ближайшие 14 дней</div></div><div class="stat-card"><div class="stat-icon">✓</div><div class="stat-value">${passed} / ${total}</div><div class="stat-label">Закрыто работ</div></div></div>
-      <div class="panel-title academic-list-header"><h2>Работы и аттестации</h2><span>${filtered.length} записей</span></div>
-      <div class="toolbar"><select id="academic-filter" aria-label="Фильтр учебных работ"><option value="doing" ${academicFilter==='doing'?'selected':''}>В работе</option><option value="planned" ${academicFilter==='planned'?'selected':''}>Запланировано</option><option value="debt" ${academicFilter==='debt'?'selected':''}>Долги и просроченное</option><option value="exams" ${academicFilter==='exams'?'selected':''}>Зачёты и экзамены</option><option value="passed" ${academicFilter==='passed'?'selected':''}>Закрытые</option><option value="all" ${academicFilter==='all'?'selected':''}>Все</option></select><select id="academic-subject-filter" aria-label="Фильтр по дисциплинам"><option value="all">Все дисциплины</option>${subjects.map(subject=>`<option value="${escapeHtml(subject)}" ${academicSubjectFilter===subject?'selected':''}>${escapeHtml(subject)}</option>`).join('')}</select><button class="btn btn-small" data-action="add-academic">+ Новая работа</button></div>
-      <div class="study-grid">${filtered.map(academicCard).join('')||'<div class="empty">В этом списке пока нет записей. Добавь первую дисциплину и работу со сроком.</div>'}</div>
-      <div class="panel study-hint"><div class="panel-title"><h2>Как вести университетские дела</h2></div><p>Один зачёт, экзамен, курсовая или лабораторная = одна карточка. Дисциплина может повторяться в нескольких карточках. Когда работу приняли, поставь «Зачтено / закрыто». Долги помечай отдельным статусом, даже если срок уже прошёл.</p></div>`;
+    const works=data.academic,total=works.length,debts=works.filter(x=>x.status==='debt').length;
+    const overdue=works.filter(x=>academicOverdue(x)&&x.status!=='debt').length;
+    const upcoming=works.filter(x=>x.status!=='passed'&&x.due&&x.due>=today()&&x.due<=iso(shiftDate(new Date(),14))).length;
+    const passed=works.filter(x=>x.status==='passed').length;
+    const subjects=[...data.universitySubjects].sort((a,b)=>String(a.title).localeCompare(String(b.title),'ru'));
+    const shown=subjects.filter(x=>(academicSubjectFilter==='all'||x.id===academicSubjectFilter)&&(academicSessionFilter==='all'||(academicSessionFilter==='none'?!x.sessionId:x.sessionId===academicSessionFilter)));
+    return `<div class="study-summary"><div class="stat-card"><div class="stat-icon">!</div><div class="stat-value">${debts}</div><div class="stat-label">Учебных долгов</div></div><div class="stat-card"><div class="stat-icon">◷</div><div class="stat-value">${overdue}</div><div class="stat-label">Просрочено без долга</div></div><div class="stat-card"><div class="stat-icon">▤</div><div class="stat-value">${upcoming}</div><div class="stat-label">Сдач за 14 дней</div></div><div class="stat-card"><div class="stat-icon">✓</div><div class="stat-value">${passed} / ${total}</div><div class="stat-label">Закрыто работ</div></div></div>
+      <div class="panel-title academic-list-header"><h2>Предметы и работы</h2><span>${subjects.length} предметов · ${total} работ</span></div>
+      <div class="toolbar"><select id="academic-filter" aria-label="Фильтр учебных работ">${Object.entries({all:'Все работы',doing:'В работе',planned:'Запланировано',debt:'Долги и просроченное',exams:'Зачёты и экзамены',passed:'Закрытые'}).map(([v,label])=>`<option value="${v}" ${academicFilter===v?'selected':''}>${label}</option>`).join('')}</select><select id="academic-subject-filter" aria-label="Фильтр по предметам"><option value="all">Все предметы</option>${subjects.map(x=>`<option value="${escapeHtml(x.id)}" ${academicSubjectFilter===x.id?'selected':''}>${escapeHtml(x.title)}</option>`).join('')}</select><select id="academic-session-filter" aria-label="Фильтр по сессиям"><option value="all">Все сессии</option><option value="none" ${academicSessionFilter==='none'?'selected':''}>Без сессии</option>${data.universitySessions.map(x=>`<option value="${escapeHtml(x.id)}" ${academicSessionFilter===x.id?'selected':''}>${escapeHtml(x.title)}</option>`).join('')}</select><button class="btn btn-small btn-accent" data-action="add-uni-subject">+ Предмет</button><button class="btn btn-small" data-action="add-academic">+ Работа</button></div>
+      <p class="subnote">Структура: предмет → работа (ЛР, КР, зачёт) → небольшие шаги. Галочка шага означает выполнение шага, но <b>не закрывает автоматически работу</b>: её нужно отдельно сдать. «Долг» ставится вручную, «Просрочено без долга» рассчитывается по датам.</p>
+      <div class="uni-subject-list">${shown.map(sub=>uniSubjectCard(sub,works.filter(x=>x.subjectId===sub.id))).join('')||'<div class="panel empty">Предметов пока нет. Создай первый предмет и добавь к нему работы.</div>'}</div>`;
   }
   function renderUniversitySessions(){
     const sessions=[...data.universitySessions].sort((a,b)=>(a.start||'9999').localeCompare(b.start||'9999'));
     return `      <div class="panel"><div class="panel-title"><h2>Сессии и экзаменационные периоды</h2><button class="text-button" data-action="add-session">+ Добавить период</button></div>
-      <div class="session-grid">${sessions.map(x=>`<div class="session-card"><div><h3>${escapeHtml(x.title)}</h3><p>${x.start?prettyDate(x.start,true):'Дата начала не задана'}${x.end?' — '+prettyDate(x.end,true):''}</p><span>${data.academic.filter(a=>a.sessionId===x.id).length} работ привязано</span>${x.notes?`<p>${escapeHtml(x.notes)}</p>`:''}</div><div class="study-buttons"><button class="icon-btn" data-action="edit-session" data-id="${escapeHtml(x.id)}" aria-label="Редактировать сессию">✎</button><button class="icon-btn" data-action="delete-session" data-id="${escapeHtml(x.id)}" aria-label="Удалить сессию">✕</button></div></div>`).join('')||'<div class="row-sub">Добавь, например, зимнюю сессию и диапазон дат. Сдачи и экзамены появятся ниже отдельными карточками.</div>'}</div></div>
-<div class="panel study-hint"><p>Здесь хранятся периоды сессий. Экзамены и зачёты создаются в разделе «Работы и долги» и привязываются к периоду.</p><button class="btn btn-accent" data-action="add-academic">+ Добавить зачёт или экзамен</button></div>`;
+      <div class="session-grid">${sessions.map(x=>`<div class="session-card"><div><h3>${escapeHtml(x.title)}</h3><p>${x.start?prettyDate(x.start,true):'Дата начала не задана'}${x.end?' — '+prettyDate(x.end,true):''}</p><span>${data.universitySubjects.filter(a=>a.sessionId===x.id).length} предметов · ${data.academic.filter(a=>a.sessionId===x.id).length} работ</span>${x.notes?`<p>${escapeHtml(x.notes)}</p>`:''}</div><div class="study-buttons"><button class="icon-btn" data-action="edit-session" data-id="${escapeHtml(x.id)}" aria-label="Редактировать сессию">✎</button><button class="icon-btn" data-action="delete-session" data-id="${escapeHtml(x.id)}" aria-label="Удалить сессию">✕</button></div></div>`).join('')||'<div class="row-sub">Добавь, например, зимнюю сессию и диапазон дат. Сдачи и экзамены появятся ниже отдельными карточками.</div>'}</div></div>
+<div class="panel study-hint"><p>Здесь хранятся периоды сессий. Создай предмет в разделе «Работы и долги» и выбери эту сессию. Затем добавляй внутрь предмета зачёты, лабораторные, курсовые и их шаги.</p><button class="btn btn-accent" data-action="add-uni-subject">+ Добавить предмет</button></div>`;
   }
   function renderCalendar(){
     const first=new Date(selectedMonth.getFullYear(),selectedMonth.getMonth(),1),start=shiftDate(first,-(first.getDay()+6)%7),ym=iso(first).slice(0,7);
@@ -492,7 +506,9 @@
     if(type==='habit')item=id?data.habits.find(h=>h.id===id):{title:'',icon:'✳',color:'#91b9b0'};
     if(type==='study')item=id?data.study.find(x=>x.id===id):{title:'',area:'3D и материалы',projectId:prefProject,status:'planned',progress:0,due:'',nextStep:'',notes:'',sessions:[]};
     if(type==='study-log')item=data.study.find(x=>x.id===id);
-    if(type==='academic')item=id?data.academic.find(x=>x.id===id):{title:'',subject:'',type:'lab',status:'planned',due:'',priority:'normal',sessionId:'',teacher:'',nextStep:'',notes:''};
+    if(type==='academic')item=id?data.academic.find(x=>x.id===id):{title:'',subjectId:prefProject,subject:'',type:'lab',status:'planned',due:'',priority:'normal',sessionId:'',teacher:'',nextStep:'',notes:'',subtasks:[]};
+    if(type==='uni-subject')item=id?uniSubject(id):{title:'',teacher:'',sessionId:'',due:'',debt:false,notes:''};
+    if(type==='uni-step'){const work=data.academic.find(x=>x.id===prefProject);item=work?(id?work.subtasks.find(s=>s.id===id):{title:'',done:false}):null;}
     if(type==='session')item=id?data.universitySessions.find(x=>x.id===id):{title:'',start:'',end:'',notes:''};
     if(type==='timetable')item=id?data.timetable.find(x=>x.id===id):{subject:'',teacher:'',weekday:1,start:'09:00',end:'10:30',kind:'lecture',parity:'every',notes:''};
     if(type==='attendance'){
@@ -504,15 +520,17 @@
     }
     if(!item)return;
     if(type==='attendance')editMode.prefill={scheduleId:item.scheduleId||''};
-    document.querySelector('#editor-title').textContent=(type==='study-log'?'Записать ':id?'Редактировать ':'Добавить ')+(type==='subtask'?'подзадачу':type==='work'?'рабочую сессию':type==='task'?'задачу':type==='post'?'публикацию':type==='study'?'тему обучения':type==='study-log'?'занятие':type==='academic'?'работу по вузу':type==='session'?'сессию':type==='timetable'?'пару в расписании':type==='attendance'?'пару в журнал':type==='habit'?'привычку':'проект');
+    document.querySelector('#editor-title').textContent=(type==='study-log'?'Записать ':id?'Редактировать ':'Добавить ')+(type==='uni-subject'?'предмет':type==='uni-step'?'шаг работы':type==='subtask'?'подзадачу':type==='work'?'рабочую сессию':type==='task'?'задачу':type==='post'?'публикацию':type==='study'?'тему обучения':type==='study-log'?'занятие':type==='academic'?'работу по вузу':type==='session'?'сессию':type==='timetable'?'пару в расписании':type==='attendance'?'пару в журнал':type==='habit'?'привычку':'проект');
     const f=document.querySelector('#editor-fields');
     if(type==='task')f.innerHTML=field('Задача *','title',input('title',item.title,'required maxlength="300" placeholder="Например: подобрать материалы для стены"'))+field('Проект','projectId',select('projectId',projectOptions(item.projectId)))+`<div class="form-cols">${field('Срок','due',input('due',item.due,'type="date"'))}${field('Приоритет','priority',select('priority',optionList(PRIORITIES,item.priority)))}</div>`+field('Состояние','status',select('status',optionList(TASK_STATES,item.status)))+field('Индивидуальный цвет (необязательно)','color',`<div class="color-setting"><input type="color" name="color" id="fld-color" value="${escapeHtml(item.color||'#91b9b0')}"><label class="inline-check"><input type="checkbox" name="customColor" ${item.color?'checked':''}> Свой цвет вместо цвета проекта</label></div>`)+field('Заметки','notes',`<textarea id="fld-notes" name="notes" maxlength="10000" placeholder="Коротко о следующем шаге">${escapeHtml(item.notes)}</textarea>`);
+    if(type==='uni-subject')f.innerHTML=field('Название предмета *','title',input('title',item.title,'required maxlength="160" placeholder="Например: Фундаменты"'))+field('Преподаватель','teacher',input('teacher',item.teacher,'maxlength="160" placeholder="Линовский"'))+field('Сессия','sessionId',select('sessionId',sessionOptions(item.sessionId)))+field('Общий срок (при необходимости)','due',input('due',item.due,'type="date"'))+field('Долг','debt',`<label class="inline-check"><input id="fld-debt" type="checkbox" name="debt" ${item.debt?'checked':''}> Пометить предмет как долг (иначе просрочка считается по срокам)</label>`)+field('Заметки','notes',`<textarea id="fld-notes" name="notes" maxlength="10000">${escapeHtml(item.notes)}</textarea>`);
+    if(type==='uni-step')f.innerHTML=field('Название маленького шага *','title',input('title',item.title,'required maxlength="300" placeholder="Например: Расчёт КР / Чертёж №1"'));
     if(type==='subtask')f.innerHTML=`<p class="dialog-context">Подзадачи не имеют дедлайна. Отмечай каждый шаг по мере выполнения.</p>`+field('Название шага *','title',input('title',item.title,'required maxlength="300" placeholder="Например: подготовить UV-развёртку"'));
     if(type==='work')f.innerHTML=`<div class="form-cols">${field('Дата','date',input('date',item.date,'type="date" required'))}${field('Время, минуты','minutes',input('minutes',item.minutes,'type="number" min="1" max="1440" required'))}</div>`+field('Направление','area',select('area',WORK_AREAS.map(a=>`<option value="${escapeHtml(a)}" ${item.area===a?'selected':''}>${escapeHtml(a)}</option>`).join('')))+field('Связанный проект','projectId',select('projectId',projectOptions(item.projectId)))+field('Что сделал','note',`<textarea id="fld-note" name="note" maxlength="1000" placeholder="Можно записать даже небольшой шаг">${escapeHtml(item.note)}</textarea>`);
     if(type==='post')f.innerHTML=field('Тема публикации *','title',input('title',item.title,'required maxlength="300" placeholder="Например: как я исправил Weight Paint"'))+`<div class="form-cols">${field('Площадка','channel',select('channel',CHANNELS.map(c=>`<option ${item.channel===c?'selected':''} value="${escapeHtml(c)}">${escapeHtml(c)}</option>`).join('')))}${field('Формат','format',select('format',FORMATS.map(c=>`<option ${item.format===c?'selected':''} value="${escapeHtml(c)}">${escapeHtml(c)}</option>`).join('')))}</div>`+field('Проект','projectId',select('projectId',projectOptions(item.projectId)))+`<div class="form-cols">${field('Дата','date',input('date',item.date,'type="date"'))}${field('Стадия','status',select('status',optionList(STAGES,item.status)))}</div>`+field('Идея / текст / что подготовить','notes',`<textarea id="fld-notes" name="notes" maxlength="10000" placeholder="Кадры, тезисы, ссылка на исходные материалы…">${escapeHtml(item.notes)}</textarea>`)+field('Ссылка на опубликованный пост','link',input('link',item.link,'type="url" maxlength="2000" placeholder="https://…"'));
     if(type==='study')f.innerHTML=field('Чему хочешь научиться *','title',input('title',item.title,'required maxlength="300" placeholder="Например: Hand-painted материалы"'))+`<div class="form-cols">${field('Направление','area',select('area',STUDY_AREAS.map(a=>`<option value="${escapeHtml(a)}" ${item.area===a?'selected':''}>${escapeHtml(a)}</option>`).join('')))}${field('Состояние','status',select('status',optionList(STUDY_STATES,item.status)))}</div>`+`<div class="form-cols">${field('Прогресс, %','progress',input('progress',item.progress,'type="number" min="0" max="100" step="5"'))}${field('Желаемая дата','due',input('due',item.due,'type="date"'))}</div>`+field('Связанный проект','projectId',select('projectId',projectOptions(item.projectId)))+field('Следующий маленький шаг','nextStep',input('nextStep',item.nextStep,'maxlength="500" placeholder="Протестировать текстуру на модели"'))+field('Материалы и заметки','notes',`<textarea id="fld-notes" name="notes" maxlength="10000" placeholder="Ссылки, важные понятия, заметки…">${escapeHtml(item.notes)}</textarea>`);
     if(type==='study-log')f.innerHTML=`<p class="dialog-context">Тема: ${escapeHtml(item.title)}</p><div class="form-cols">${field('Дата занятия','date',input('date',today(),'type="date" required'))}${field('Продолжительность, мин','minutes',input('minutes',30,'type="number" min="1" max="1440" required'))}</div>`+field('Что получилось / что изучил','note',`<textarea id="fld-note" name="note" maxlength="1000" placeholder="Например: исправил веса на рукавах и проверил деформации"></textarea>`);
-    if(type==='academic')f.innerHTML=field('Название работы / аттестации *','title',input('title',item.title,'required maxlength="300" placeholder="Например: Лабораторная № 2"'))+field('Дисциплина','subject',input('subject',item.subject,'maxlength="160" placeholder="Например: Деревянные конструкции"'))+`<div class="form-cols">${field('Тип','type',select('type',optionList(ACADEMIC_TYPES,item.type)))}${field('Статус','status',select('status',optionList(ACADEMIC_STATUSES,item.status)))}</div>`+`<div class="form-cols">${field('Дедлайн / дата экзамена','due',input('due',item.due,'type="date"'))}${field('Приоритет','priority',select('priority',optionList(PRIORITIES,item.priority)))}</div>`+field('Сессия','sessionId',select('sessionId',sessionOptions(item.sessionId)))+field('Преподаватель (необязательно)','teacher',input('teacher',item.teacher,'maxlength="160" placeholder="Фамилия или контакт"'))+field('Следующее действие','nextStep',input('nextStep',item.nextStep,'maxlength="500" placeholder="Закончить расчёт и сдать отчёт"'))+field('Примечания','notes',`<textarea id="fld-notes" name="notes" maxlength="10000" placeholder="Что требуется, где материалы, условия сдачи…">${escapeHtml(item.notes)}</textarea>`);
+    if(type==='academic')f.innerHTML=field('Название работы *','title',input('title',item.title,'required maxlength="300" placeholder="Например: ЛР №1 или КР"'))+field('Предмет *','subjectId',select('subjectId',subjectOptions(item.subjectId)))+`<div class="form-cols">${field('Тип','type',select('type',optionList(ACADEMIC_TYPES,item.type)))}${field('Статус','status',select('status',optionList(ACADEMIC_STATUSES,item.status)))}</div>`+`<div class="form-cols">${field('Срок сдачи','due',input('due',item.due,'type="date"'))}${field('Приоритет','priority',select('priority',optionList(PRIORITIES,item.priority)))}</div>`+field('Следующее действие (необязательно)','nextStep',input('nextStep',item.nextStep,'maxlength="500" placeholder="Например: показать чертёж преподавателю"'))+field('Примечания','notes',`<textarea id="fld-notes" name="notes" maxlength="10000">${escapeHtml(item.notes)}</textarea>`);
     if(type==='timetable')f.innerHTML=field('Дисциплина *','subject',input('subject',item.subject,'required maxlength="160" placeholder="Например: Строительная механика"'))+`<div class="form-cols">${field('День недели','weekday',select('weekday',optionList(WEEK_DAYS,item.weekday)))}${field('Тип пары','kind',select('kind',optionList(LESSON_TYPES,item.kind)))}</div>`+`<div class="form-cols">${field('Начало','start',input('start',item.start,'type="time" required'))}${field('Конец','end',input('end',item.end,'type="time" required'))}</div>`+field('Повторение','parity',select('parity',optionList(WEEK_PARITIES,item.parity)))+field('Преподаватель','teacher',input('teacher',item.teacher,'maxlength="160"'))+field('Заметки','notes',`<textarea id="fld-notes" name="notes" maxlength="1000">${escapeHtml(item.notes)}</textarea>`);
     if(type==='attendance')f.innerHTML=field('Дисциплина *','subject',input('subject',item.subject,'required maxlength="160"'))+`<div class="form-cols">${field('Дата пары','date',input('date',item.date,'type="date" required'))}${field('Отметка посещения','status',select('status',`<option value="" ${!item.status?'selected':''}>Не отмечено (пара остаётся в журнале)</option>`+optionList(ATTENDANCE_STATUSES,item.status)))}</div>`+`<div class="form-cols">${field('Тип пары','kind',select('kind',optionList(LESSON_TYPES,item.kind)))}${field('Преподаватель','teacher',input('teacher',item.teacher,'maxlength="160"'))}</div>`+`<div class="form-cols">${field('Начало','start',input('start',item.start,'type="time"'))}${field('Конец','end',input('end',item.end,'type="time"'))}</div>`+field('Заметки','notes',`<textarea id="fld-notes" name="notes" maxlength="1500" placeholder="Например: тема лекции, что задали">${escapeHtml(item.notes)}</textarea>`);
     if(type==='session')f.innerHTML=field('Название сессии *','title',input('title',item.title,'required maxlength="120" placeholder="Например: Зимняя сессия 2026/27"'))+`<div class="form-cols">${field('Начало','start',input('start',item.start,'type="date"'))}${field('Конец','end',input('end',item.end,'type="date"'))}</div>`+field('Примечания','notes',`<textarea id="fld-notes" name="notes" maxlength="10000" placeholder="Допуски, расписание, важные особенности">${escapeHtml(item.notes)}</textarea>`);
@@ -528,7 +546,9 @@
     if(type==='post'){const title=txt('title');if(!title)return;const previous=data.posts.find(x=>x.id===id);const link=txt('link');if(link&&!validUrl(link)){alert('Ссылка должна начинаться с http:// или https://');return;}const entry={id,title:title.slice(0,300),channel:CHANNELS.includes(txt('channel'))?txt('channel'):'Telegram',format:FORMATS.includes(txt('format'))?txt('format'):'Пост',projectId:txt('projectId'),date:hasDate(txt('date'))?txt('date'):'',status:STAGES[txt('status')]?txt('status'):'idea',notes:txt('notes').slice(0,10000),link};transition('post',title,previous?.status==='published',entry.status==='published',entry);upsert(data.posts,entry);}
     if(type==='study'){const title=txt('title');if(!title)return;const previous=data.study.find(x=>x.id===id);const entry={id,title:title.slice(0,300),area:STUDY_AREAS.includes(txt('area'))?txt('area'):'Другое',projectId:txt('projectId'),status:STUDY_STATES[txt('status')]?txt('status'):'planned',progress:Math.max(0,Math.min(100,Math.floor(n(txt('progress'))))),due:hasDate(txt('due'))?txt('due'):'',nextStep:txt('nextStep').slice(0,500),notes:txt('notes').slice(0,10000),sessions:previous?.sessions||[]};upsert(data.study,entry);}
     if(type==='study-log'){const topic=data.study.find(x=>x.id===id);if(!topic)return;topic.sessions.push({id:safeId(),date:hasDate(txt('date'))?txt('date'):today(),minutes:Math.max(1,Math.min(1440,Math.floor(n(txt('minutes'))||1))),note:txt('note').slice(0,1000)});if(topic.status==='planned')topic.status='learning';}
-    if(type==='academic'){const title=txt('title');if(!title)return;const previous=data.academic.find(x=>x.id===id);const entry={id,title:title.slice(0,300),subject:txt('subject').slice(0,160),type:ACADEMIC_TYPES[txt('type')]?txt('type'):'other',status:ACADEMIC_STATUSES[txt('status')]?txt('status'):'planned',due:hasDate(txt('due'))?txt('due'):'',priority:PRIORITIES[txt('priority')]?txt('priority'):'normal',sessionId:txt('sessionId'),teacher:txt('teacher').slice(0,160),nextStep:txt('nextStep').slice(0,500),notes:txt('notes').slice(0,10000)};transition('academic',title,previous?.status==='passed',entry.status==='passed');upsert(data.academic,entry);}
+    if(type==='uni-subject'){const title=txt('title');if(!title)return;upsert(data.universitySubjects,{id,title:title.slice(0,160),teacher:txt('teacher').slice(0,160),sessionId:txt('sessionId'),due:hasDate(txt('due'))?txt('due'):'',debt:fd.has('debt'),notes:txt('notes').slice(0,10000)});for(const work of data.academic.filter(w=>w.subjectId===id)){work.subject=title.slice(0,160);work.teacher=txt('teacher').slice(0,160);work.sessionId=txt('sessionId');}}
+    if(type==='uni-step'){const work=data.academic.find(x=>x.id===editMode.parentId);const title=txt('title');if(!work||!title)return;const previous=work.subtasks.find(x=>x.id===id);upsert(work.subtasks,{id,title:title.slice(0,300),done:previous?.done||false});}
+    if(type==='academic'){const title=txt('title'),subject=uniSubject(txt('subjectId'));if(!title||!subject){alert('Сначала выбери предмет.');return;}const previous=data.academic.find(x=>x.id===id);const entry={id,title:title.slice(0,300),subjectId:subject.id,subject:subject.title,type:ACADEMIC_TYPES[txt('type')]?txt('type'):'other',status:ACADEMIC_STATUSES[txt('status')]?txt('status'):'planned',due:hasDate(txt('due'))?txt('due'):'',priority:PRIORITIES[txt('priority')]?txt('priority'):'normal',sessionId:subject.sessionId,teacher:subject.teacher,nextStep:txt('nextStep').slice(0,500),notes:txt('notes').slice(0,10000),subtasks:previous?.subtasks||[]};transition('academic',title,previous?.status==='passed',entry.status==='passed');upsert(data.academic,entry);}
     if(type==='timetable'){
       const subject=txt('subject'),start=txt('start'),end=txt('end');if(!subject)return;
       if(!hhmm(start)||!hhmm(end)||start>=end){alert('Проверь время: конец пары должен быть позже начала.');return;}
@@ -547,7 +567,21 @@
     save();editor.close();render();toast('Сохранено');
   }
   function upsert(list,entry){const i=list.findIndex(x=>x.id===entry.id);if(i<0)list.push(entry);else list[i]=entry;}
-  function remove(type,id){const list=data[type];const i=list.findIndex(x=>x.id===id);if(i<0)return;const target=list[i];const label=target.title||target.name||target.subject||(type==='workSessions'?`${prettyDate(target.date,true)} · ${hoursString(target.minutes)}`:'запись');const extra=type==='projects'?' Задачи, посты и темы обучения останутся без привязки.':'';if(!confirm(`Удалить «${label}»?${extra}`))return;list.splice(i,1);if(type==='universitySessions'){data.academic.forEach(x=>{if(x.sessionId===id)x.sessionId='';});}if(type==='habits')data.habitChecks=data.habitChecks.filter(c=>c.habitId!==id);if(type==='projects'){if(selectedProjectId===id)selectedProjectId=null;data.tasks.forEach(x=>{if(x.projectId===id)x.projectId='';});data.posts.forEach(x=>{if(x.projectId===id)x.projectId='';});data.study.forEach(x=>{if(x.projectId===id)x.projectId='';});}save();render();toast('Удалено');}
+  function ensureUniSubject(title,teacher=''){
+    let subject=data.universitySubjects.find(x=>x.title.toLocaleLowerCase('ru-RU')===String(title).toLocaleLowerCase('ru-RU')&&x.teacher===teacher);
+    if(!subject){subject={id:safeId(),title:String(title).slice(0,160),teacher:String(teacher).slice(0,160),sessionId:'',due:'',debt:false,notes:''};data.universitySubjects.push(subject);save();}
+    return subject;
+  }
+  function removeUniSubject(id){
+    const sub=uniSubject(id);if(!sub)return;
+    const count=data.academic.filter(w=>w.subjectId===id).length;
+    if(!confirm(`Удалить предмет «${sub.title}»? ${count?`Его ${count} работ(ы) останутся в разделе «Без предмета», чтобы их можно было перенести.`:'Работ внутри нет.'}`))return;
+    // Не удаляем работы каскадом: создаём контейнер для сирот и сохраняем подзадачи.
+    if(count){let orphan=data.universitySubjects.find(s=>s.title==='Без предмета'&&s.id!==id);if(!orphan){orphan={id:safeId(),title:'Без предмета',teacher:'',sessionId:'',due:'',debt:false,notes:''};data.universitySubjects.push(orphan);}data.academic.filter(w=>w.subjectId===id).forEach(w=>{w.subjectId=orphan.id;w.subject=orphan.title;w.teacher='';w.sessionId='';});}
+    data.universitySubjects=data.universitySubjects.filter(s=>s.id!==id);
+    if(academicSubjectFilter===id)academicSubjectFilter='all';save();render();toast('Предмет удалён; работы сохранены');
+  }
+  function remove(type,id){const list=data[type];const i=list.findIndex(x=>x.id===id);if(i<0)return;const target=list[i];const label=target.title||target.name||target.subject||(type==='workSessions'?`${prettyDate(target.date,true)} · ${hoursString(target.minutes)}`:'запись');const extra=type==='projects'?' Задачи, посты и темы обучения останутся без привязки.':'';if(!confirm(`Удалить «${label}»?${extra}`))return;list.splice(i,1);if(type==='universitySessions'){data.universitySubjects.forEach(x=>{if(x.sessionId===id)x.sessionId='';});data.academic.forEach(x=>{if(x.sessionId===id)x.sessionId='';});if(academicSessionFilter===id)academicSessionFilter='all';}if(type==='habits')data.habitChecks=data.habitChecks.filter(c=>c.habitId!==id);if(type==='projects'){if(selectedProjectId===id)selectedProjectId=null;data.tasks.forEach(x=>{if(x.projectId===id)x.projectId='';});data.posts.forEach(x=>{if(x.projectId===id)x.projectId='';});data.study.forEach(x=>{if(x.projectId===id)x.projectId='';});}save();render();toast('Удалено');}
   async function exportData(){
     const text=JSON.stringify(data,null,2);
     const filename=`masterskaya_backup_${today()}.json`;
@@ -620,13 +654,15 @@
         const record=data.attendance.find(x=>x.id===btn.dataset.record);
         const schedule=data.timetable.find(x=>x.id===id);
         const item=record||schedule;if(!item)break;
-        universityTab='works';openEditor('academic');
-        document.querySelector('#fld-subject').value=item.subject;
+        universityTab='works';const sub=ensureUniSubject(item.subject,item.teacher||'');openEditor('academic',null,sub.id);
         document.querySelector('#fld-title').value='Задание по паре от '+prettyDate(btn.dataset.date,true);
         document.querySelector('#fld-notes').value=`Занятие: ${prettyDate(btn.dataset.date,true)}. ${LESSON_TYPES[item.kind]||'Пара'}.`;
         break;
       }
-      case 'add-academic':openEditor('academic');break;case 'edit-academic':openEditor('academic',id);break;case 'delete-academic':remove('academic',id);break;
+      case 'add-academic':if(!data.universitySubjects.length){openEditor('uni-subject');toast('Сначала добавь предмет');}else openEditor('academic',null,btn.dataset.subject||'');break;
+      case 'add-uni-subject':openEditor('uni-subject');break;case 'edit-uni-subject':openEditor('uni-subject',id);break;case 'delete-uni-subject':removeUniSubject(id);break;
+      case 'edit-uni-step':openEditor('uni-step',id,btn.dataset.work);break;
+      case 'delete-uni-step':{const work=data.academic.find(x=>x.id===btn.dataset.work),step=work?.subtasks.find(s=>s.id===id);if(step&&confirm(`Удалить шаг «${step.title}»?`)){work.subtasks=work.subtasks.filter(s=>s.id!==id);save();render();toast('Шаг удалён');}break;}case 'edit-academic':openEditor('academic',id);break;case 'delete-academic':remove('academic',id);break;
       case 'add-session':openEditor('session');break;case 'edit-session':openEditor('session',id);break;case 'delete-session':remove('universitySessions',id);break;
       case 'add-study':openEditor('study',null,p);break;case 'edit-study':openEditor('study',id);break;case 'log-study':openEditor('study-log',id);break;case 'delete-study':remove('study',id);break;
       case 'add-subtask':openEditor('subtask',null,p);break;case 'edit-subtask':openEditor('subtask',id,p);break;
@@ -653,6 +689,8 @@
     if(e.target.matches('[data-task-status]')){const t=data.tasks.find(x=>x.id===e.target.dataset.taskStatus);if(t&&TASK_STATES[e.target.value]){const before=t.status==='done';if(t.status!=='done')t.lastOpenStatus=t.status;t.status=e.target.value;if(t.status!=='done')t.lastOpenStatus=t.status;transition('task',t.title,before,t.status==='done',t);save();render();toast('Статус задачи обновлён');}}
     if(e.target.matches('[data-check-task]')){const t=data.tasks.find(x=>x.id===e.target.dataset.checkTask);if(t){const before=t.status==='done';if(e.target.checked){t.lastOpenStatus=t.status==='todo'?'todo':'doing';t.status='done';}else t.status=t.lastOpenStatus||'doing';transition('task',t.title,before,t.status==='done',t);save();render();}}
     if(e.target.matches('[data-check-subtask]')){const parent=data.tasks.find(t=>t.id===e.target.dataset.parent);const sub=parent?.subtasks.find(st=>st.id===e.target.dataset.checkSubtask);if(sub){const before=sub.done;sub.done=e.target.checked;transition('subtask',sub.title,before,sub.done,parent);save();render();}}
+    if(e.target.matches('[data-uni-step]')){const work=data.academic.find(x=>x.id===e.target.dataset.work),step=work?.subtasks.find(x=>x.id===e.target.dataset.uniStep);if(step){const prev=step.done;step.done=e.target.checked;transition('subtask',`ВУЗ · ${work.subject} · ${work.title} · ${step.title}`,prev,step.done,{color:'#96accb'});save();render();}}
+    if(e.target.matches('[data-uni-work-check]')){const work=data.academic.find(x=>x.id===e.target.dataset.uniWorkCheck);if(work){const was=work.status==='passed';work.status=e.target.checked?'passed':'progress';transition('academic',work.title,was,work.status==='passed');save();render();}}
     if(e.target.matches('[data-post-stage]')){const p=data.posts.find(x=>x.id===e.target.dataset.postStage);if(p&&STAGES[e.target.value]){const before=p.status==='published';p.status=e.target.value;transition('post',p.title,before,p.status==='published',p);save();render();toast('Этап обновлён');}}
     if(e.target.matches('#task-sort')){if(TASK_SORTS[e.target.value]){data.taskSort=e.target.value;save();render();}}
     if(e.target.matches('#task-filter')){taskFilter=e.target.value;render();}
@@ -669,6 +707,7 @@
     }
     if(e.target.matches('#academic-filter')){academicFilter=e.target.value;render();}
     if(e.target.matches('#academic-subject-filter')){academicSubjectFilter=e.target.value;render();}
+    if(e.target.matches('#academic-session-filter')){academicSessionFilter=e.target.value;render();}
     if(e.target.matches('[data-academic-status]')){const x=data.academic.find(a=>a.id===e.target.dataset.academicStatus);if(x&&ACADEMIC_STATUSES[e.target.value]){const before=x.status==='passed';x.status=e.target.value;transition('academic',x.title,before,x.status==='passed');save();render();toast('Статус работы обновлён');}}
   });
   document.addEventListener('input',e=>{if(e.target.matches('#task-search')){query=e.target.value;const pos=e.target.selectionStart;render();const input=document.querySelector('#task-search');input.focus();input.setSelectionRange(pos,pos);}});
@@ -686,6 +725,12 @@
     app.querySelectorAll('.task-drop-target,.task-dragging').forEach(el=>el.classList.remove('task-drop-target','task-dragging'));const box=card.getBoundingClientRect();moveTaskBefore(dragged,card.dataset.taskId,e.clientY>box.top+box.height/2);
   });
   app.addEventListener('dragend',()=>{draggedTaskId=null;app.querySelectorAll('.task-drop-target,.task-dragging').forEach(el=>el.classList.remove('task-drop-target','task-dragging'));});
+  app.addEventListener('submit',e=>{
+    const box=e.target.closest('[data-uni-quick]');if(!box)return;e.preventDefault();
+    const work=data.academic.find(x=>x.id===box.dataset.uniQuick),value=box.elements.step.value.trim();
+    if(!work||!value)return;work.subtasks.push({id:safeId(),title:value.slice(0,300),done:false});
+    save();render();toast('Шаг добавлен');
+  });
   form.addEventListener('submit',e=>{e.preventDefault();saveEntry();});
   document.addEventListener('submit',e=>{if(e.target.id==='goals-form'){e.preventDefault();const fd=new FormData(e.target);CHANNELS.forEach(ch=>data.goals[ch]=Math.max(0,Math.min(100,Math.floor(n(fd.get(ch))))));save();render();toast('Цели сохранены');}});
   document.querySelector('#restore-file').addEventListener('change',async e=>{const file=e.target.files?.[0];await importData(file);e.target.value='';});
