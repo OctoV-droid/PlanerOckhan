@@ -1,4 +1,4 @@
-/* МАСТЕРСКАЯ v2.9 — проекты с задачами, ручной порядок, подзадачи и активность.
+/* МАСТЕРСКАЯ v2.9.1 — проекты с задачами, ручной порядок, подзадачи и активность.
    Данные хранятся ТОЛЬКО в localStorage этого браузера.
    Ни токенов GitHub, ни секретов, ни запросов к внешним сервисам. */
 (() => {
@@ -333,7 +333,7 @@
       <div class="uni-work-top"><label class="uni-work-complete"><input type="checkbox" class="check" data-uni-work-check="${escapeHtml(x.id)}" ${x.status==='passed'?'checked':''} aria-label="Закрыть работу ${escapeHtml(x.title)}"></label><div class="uni-work-body"><div class="academic-card-head"><span class="tag">${ACADEMIC_TYPES[x.type]}</span><span class="pill ${x.status==='passed'?'done':x.status==='debt'||overdue?'overdue':''}">${ACADEMIC_STATUSES[x.status]}</span></div><h3 class="uni-work-title">${escapeHtml(x.title)}</h3><div class="row-sub">${x.due?`${overdue?'Просрочено: ':'Срок: '}${prettyDate(x.due,true)}`:'Без срока'} · ${PRIORITIES[x.priority]} · Шаги: ${count.done}/${count.total}</div></div><div class="study-buttons"><button class="icon-btn" data-action="edit-academic" data-id="${escapeHtml(x.id)}" title="Редактировать работу" aria-label="Редактировать работу">✎</button><button class="icon-btn" data-action="delete-academic" data-id="${escapeHtml(x.id)}" title="Удалить работу" aria-label="Удалить работу">✕</button></div></div>
       ${count.total?`<div class="progress uni-work-progress"><span style="width:${count.pct}%"></span></div>`:''}
       <div class="uni-steps" aria-label="Подзадачи работы">${steps}</div>
-      <form class="uni-quick-form" data-uni-quick="${escapeHtml(x.id)}"><input name="step" required maxlength="300" placeholder="Новый маленький шаг (например, чертёж №1)" aria-label="Новая подзадача для ${escapeHtml(x.title)}"><button class="btn btn-small" type="submit">+ Шаг</button></form>
+      <form class="uni-quick-form" data-uni-quick="${escapeHtml(x.id)}"><input name="step" required maxlength="300" placeholder="Новый шаг (например, чертёж №1)" aria-label="Новая подзадача для ${escapeHtml(x.title)}"><button class="btn btn-small" type="submit">+ Шаг</button></form>
       ${count.total&&count.done===count.total&&x.status!=='passed'?'<p class="subnote">Все шаги готовы. Отметь работу закрытой после сдачи или принятия преподавателем.</p>':''}
       ${x.nextStep?`<p class="row-sub">Следующее действие: ${escapeHtml(x.nextStep)}</p>`:''}${x.notes?`<p class="academic-notes">${escapeHtml(x.notes)}</p>`:''}
       <div class="uni-work-footer"><select data-academic-status="${escapeHtml(x.id)}" aria-label="Статус работы ${escapeHtml(x.title)}">${optionList(ACADEMIC_STATUSES,x.status)}</select></div>

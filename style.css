@@ -375,3 +375,83 @@ input[type="checkbox"]{-webkit-appearance:checkbox;appearance:checkbox}
 /* v2.9: ВУЗ -> предмет -> работа -> шаг */
 .uni-subject-list{display:grid;gap:17px;margin-top:14px}.uni-subject{padding:20px}.uni-subject-head{display:flex;justify-content:space-between;align-items:flex-start;gap:20px;flex-wrap:wrap}.uni-subject-info{min-width:0;flex:1}.uni-subject-info h2{font-size:22px;margin:4px 0 8px;overflow-wrap:anywhere}.uni-subject-meta{font-size:12px;color:var(--muted);line-height:1.7;margin:0}.uni-subject-tags{display:flex;gap:8px;flex-wrap:wrap;margin:11px 0}.uni-work-list{display:grid;gap:12px;margin-top:17px}.uni-work{margin:0;box-shadow:none}.uni-work-top{display:flex;align-items:flex-start;gap:12px}.uni-work-complete{padding-top:18px}.uni-work-body{min-width:0;flex:1}.uni-work-title{font-size:17px;line-height:1.4;margin:8px 0;overflow-wrap:anywhere}.uni-work-done .uni-work-title{text-decoration:line-through;opacity:.65}.uni-step{display:flex;justify-content:space-between;align-items:center;gap:12px;padding:9px 7px;border-bottom:1px solid var(--border)}.uni-step-label{display:flex;align-items:center;gap:10px;min-width:0;flex:1;font-size:13px;cursor:pointer;overflow-wrap:anywhere}.uni-checked{text-decoration:line-through;opacity:.6}.uni-steps{margin:12px 0 8px 25px}.uni-quick-form{display:flex;gap:8px;margin:12px 0 0 25px}.uni-quick-form input{min-width:0;flex:1}.uni-work-progress{margin:13px 0 0 25px}.uni-work-footer{margin:14px 0 0 25px}.uni-work-footer select{max-width:100%;}.uni-subject .empty{padding:18px}
 @media(max-width:640px){.uni-subject{padding:13px}.uni-subject-head{gap:12px}.uni-subject-info h2{font-size:19px}.uni-work-top{gap:8px}.uni-work-top>.study-buttons{flex-shrink:0}.uni-steps,.uni-quick-form,.uni-work-progress,.uni-work-footer{margin-left:0}.uni-quick-form{flex-wrap:wrap}.uni-quick-form button{flex-shrink:0}.uni-step{padding-left:0;padding-right:0}.uni-step-label{font-size:12px}.uni-subject-head>.study-buttons{width:100%;flex-wrap:wrap}}
+
+/* v2.9.1 — фикс мобильного ВУЗа. Общая .study-buttons на телефоне имела
+   width:100%, сжимая соседние .uni-work-body и .uni-step-label до 0px. */
+.uni-work-top>.study-buttons,
+.uni-step>.study-buttons {
+  width:auto;
+  flex:0 0 auto;
+  flex-wrap:nowrap;
+  justify-content:flex-end;
+}
+.uni-work-top>.study-buttons .icon-btn,
+.uni-step>.study-buttons .icon-btn {
+  flex:0 0 auto;
+  min-width:36px;
+  min-height:36px;
+}
+.uni-work-body .uni-work-title,
+.uni-work-body .row-sub,
+.uni-subject-info h2,
+.uni-subject-meta,
+.uni-step-label>span {
+  word-break:normal;
+  overflow-wrap:break-word;
+  hyphens:auto;
+}
+.uni-step-label>span {min-width:0;}
+
+@media(max-width:720px) {
+  /* Заголовок работы занимает широкую колонку, а управление идёт строкой ниже. */
+  .uni-work-top {
+    display:grid;
+    grid-template-columns:24px minmax(0,1fr);
+    align-items:start;
+    column-gap:10px;
+    row-gap:6px;
+  }
+  .uni-work-top>.uni-work-complete {grid-column:1;grid-row:1;padding-top:7px;}
+  .uni-work-top>.uni-work-body {grid-column:2;grid-row:1;min-width:0;width:100%;}
+  .uni-work-top>.study-buttons {
+    grid-column:2;
+    grid-row:2;
+    justify-self:end;
+    justify-content:flex-end;
+    width:auto;
+  }
+  .uni-work-body .academic-card-head {
+    justify-content:flex-start;
+    flex-wrap:wrap;
+    gap:6px;
+  }
+  .uni-work-title {font-size:16px;line-height:1.45;}
+  .uni-step {
+    display:grid;
+    grid-template-columns:minmax(0,1fr) auto;
+    align-items:start;
+    gap:6px;
+  }
+  .uni-step>.study-buttons {width:auto;justify-content:flex-end;}
+  .uni-step-label {min-width:0;align-items:flex-start;}
+  .uni-step-label .check {flex:0 0 auto;margin-top:2px;}
+  .uni-quick-form input {flex:1 1 140px;width:100%;}
+  .uni-quick-form button {min-height:40px;}
+}
+
+/* Поле быстрой подзадачи не должно выглядеть как необработанный input браузера. */
+.uni-quick-form input {
+  min-height:41px;
+  max-width:100%;
+  padding:9px 11px;
+  border:1px solid var(--border);
+  border-radius:8px;
+  background:#222b3b;
+  color:var(--text);
+}
+.uni-quick-form input::placeholder {color:#8893a5;}
+@media(max-width:360px) {
+  .uni-quick-form {display:flex;flex-direction:column;align-items:stretch;}
+  .uni-quick-form input {width:100%;flex:none;}
+  .uni-quick-form button {align-self:flex-start;}
+}
