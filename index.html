@@ -18,9 +18,12 @@
   <link rel="icon" type="image/png" sizes="32x32" href="favicon-32.png?v=22">
   <link rel="apple-touch-icon" sizes="180x180" href="apple-touch-icon.png?v=23">
   <link rel="manifest" href="site.webmanifest?v=23">
-  <link rel="stylesheet" href="style.css?v=27">
-  <script src="app.js?v=27" defer></script>
-  <script src="pwa.js?v=27" defer></script>
+  <link rel="stylesheet" href="style.css?v=28">
+  <script src="storage.js?v=28" defer></script>
+  <script src="analytics.js?v=28" defer></script>
+  <script src="habits.js?v=28" defer></script>
+  <script src="app.js?v=28" defer></script>
+  <script src="pwa.js?v=28" defer></script>
 </head>
 <body>
   <div class="app-shell">
@@ -33,6 +36,7 @@
       <nav class="nav" aria-label="Навигация">
         <button class="nav-item active" data-nav="overview"><span class="nav-ico">◈</span> Обзор</button>
         <button class="nav-item" data-nav="tasks"><span class="nav-ico">☑</span> Задачи</button>
+        <button class="nav-item" data-nav="habits"><span class="nav-ico">✳</span> Привычки</button>
         <button class="nav-item" data-nav="content"><span class="nav-ico">▦</span> Публикации</button>
         <button class="nav-item" data-nav="university"><span class="nav-ico">▥</span> ВУЗ</button>
         <button class="nav-item" data-nav="calendar"><span class="nav-ico">▤</span> Календарь</button>
@@ -50,6 +54,7 @@
         <div class="breadcrumbs">ЛИЧНОЕ ПРОСТРАНСТВО <span>/</span> <span id="crumb-title">Обзор</span></div>
         <div class="top-right"><span id="today-label"></span><button class="btn btn-accent btn-small" data-action="add-task">+ Новая задача</button></div>
       </header>
+      <div id="storage-warning" class="storage-warning" role="alert" hidden><div><strong>⚠ Защита данных</strong><p id="storage-warning-text"></p></div><div class="actions-inline"><button id="recover-data" class="btn btn-small" data-action="recover-storage">Восстановить локальную копию</button><button id="export-corrupt" class="btn btn-small" data-action="export-broken">Скачать повреждённые данные</button><button class="btn btn-small" data-action="export">Экспорт JSON</button><button class="btn btn-small" data-action="import">Импорт JSON</button></div></div>
       <main id="app" tabindex="-1"></main>
       <footer class="footer">МАСТЕРСКАЯ · личный инструмент · локальные данные · <span id="footer-year"></span></footer>
     </div>

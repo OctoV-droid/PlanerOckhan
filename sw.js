@@ -1,7 +1,7 @@
-/* МАСТЕРСКАЯ v2.7 — только статический интерфейс; пользовательские данные не кэшируются. */
-const CACHE_NAME = 'masterskaya-static-v2-7';
+/* МАСТЕРСКАЯ v2.8 — только статический интерфейс; пользовательские данные не кэшируются. */
+const CACHE_NAME = 'masterskaya-static-v2-8';
 const APP_SHELL = [
-  './', './index.html', './style.css', './app.js', './pwa.js',
+  './', './index.html', './style.css', './storage.js', './analytics.js', './habits.js', './app.js', './pwa.js',
   './site.webmanifest', './favicon.svg', './favicon.ico',
   './favicon-32.png', './apple-touch-icon.png', './icon-192.png', './icon-512.png'
 ];
