@@ -1,4 +1,4 @@
-/* МАСТЕРСКАЯ v2.9.1 — проекты с задачами, ручной порядок, подзадачи и активность.
+/* МАСТЕРСКАЯ v2.9.2 — проекты с задачами, ручной порядок, подзадачи и активность.
    Данные хранятся ТОЛЬКО в localStorage этого браузера.
    Ни токенов GitHub, ни секретов, ни запросов к внешним сервисам. */
 (() => {
@@ -58,6 +58,10 @@
   let selectedMonth = new Date(); selectedMonth.setDate(1);
   let editMode = {type:'task',id:null};
   let toastTimer;
+  // Состояние раскрытия относится только к интерфейсу, не изменяет личные данные и журнал активности.
+  const expandedTaskSteps = new Set();
+  const expandedUniversityWorks = new Set();
+  const expandedUniversitySubjects = new Set();
 
   function clone(x){return JSON.parse(JSON.stringify(x));}
   function escapeHtml(s){return String(s ?? '').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));}
@@ -256,13 +260,14 @@
   function heading(label,title,subtitle,actions=''){return `<div class="section-heading"><div><div class="eyebrow">${label}</div><h1>${title}</h1><p>${subtitle}</p></div>${actions?`<div class="actions-inline">${actions}</div>`:''}</div>`;}
   function taskRow(t,compact=false){
     const overdue=t.status!=='done'&&t.due&&t.due<today();const due=t.due?`<span class="${overdue?'pill overdue':''}">${overdue?'Просрочено · ':''}${prettyDate(t.due)}</span>`:'Без срока';
-    const st=subtaskStats(t);const label=st.total?`${st.done}/${st.total} шагов`:'Без подзадач';
+    const st=subtaskStats(t);const label=st.total?`${st.done}/${st.total} шагов`:'0 шагов';
     if(compact)return `<div class="list-row"><input type="checkbox" class="check" aria-label="Выполнено: ${escapeHtml(t.title)}" data-check-task="${escapeHtml(t.id)}" ${t.status==='done'?'checked':''}><div class="row-main"><div class="row-title" style="${t.status==='done'?'text-decoration:line-through;opacity:.65':''}">${escapeHtml(t.title)}</div><div class="row-sub">${escapeHtml(projectLabel(t.projectId))} · ${due}${st.total?' · '+label:''}</div></div><button class="icon-btn" data-action="edit-task" data-id="${escapeHtml(t.id)}" title="Редактировать">✎</button></div>`;
+    const open=expandedTaskSteps.has(t.id);
     const steps=(t.subtasks||[]).map(sub=>`<div class="subtask-row"><input type="checkbox" class="check" data-check-subtask="${escapeHtml(sub.id)}" data-parent="${escapeHtml(t.id)}" aria-label="Выполнено: ${escapeHtml(sub.title)}" ${sub.done?'checked':''}><span class="subtask-name ${sub.done?'is-done':''}">${escapeHtml(sub.title)}</span><button class="icon-btn subtask-edit" data-action="edit-subtask" data-id="${escapeHtml(sub.id)}" data-project="${escapeHtml(t.id)}" title="Изменить шаг">✎</button><button class="icon-btn subtask-remove" data-action="delete-subtask" data-id="${escapeHtml(sub.id)}" data-project="${escapeHtml(t.id)}" title="Удалить шаг">×</button></div>`).join('');
     const reorder=page==='tasks'&&data.taskSort==='manual'&&!query;
     const moveControls=reorder?`<div class="task-move-controls"><button type="button" class="icon-btn task-drag-handle" draggable="true" data-task-drag="${escapeHtml(t.id)}" aria-label="Перетащить задачу" title="Перетащить на компьютере">⠿</button><button type="button" class="icon-btn" data-task-move="${escapeHtml(t.id)}" data-direction="-1" aria-label="Поднять задачу выше" title="Выше">↑</button><button type="button" class="icon-btn" data-task-move="${escapeHtml(t.id)}" data-direction="1" aria-label="Опустить задачу ниже" title="Ниже">↓</button></div>`:'';
-    return `<div class="task-card ${t.status==='done'?'done':''}" data-task-id="${escapeHtml(t.id)}" style="border-left:3px solid ${escapeHtml(t.color||project(t.projectId)?.color||'#596479')}">${moveControls}<input type="checkbox" class="check" aria-label="Выполнено: ${escapeHtml(t.title)}" data-check-task="${escapeHtml(t.id)}" ${t.status==='done'?'checked':''}><div class="task-wrap"><div class="row-main"><div class="row-title">${escapeHtml(t.title)}</div><div class="meta-stack">${t.color?`<span class="tag"><i class="color-dot" style="background:${escapeHtml(t.color)}"></i>Цвет задачи</span>`:''}${projectTag(t.projectId)}<span class="tag ${t.priority==='high'?'important':''}">${PRIORITIES[t.priority]}</span><select class="task-status-control" data-task-status="${escapeHtml(t.id)}" aria-label="Статус задачи ${escapeHtml(t.title)}">${optionList(TASK_STATES,t.status)}</select><span class="${overdue?'pill overdue':'row-sub'}">${due}</span></div>${t.notes?`<div class="row-sub">${escapeHtml(t.notes).slice(0,210)}</div>`:''}
-    <div class="subtasks-box"><div class="subtasks-head"><strong>Подзадачи</strong><span>${label}${st.total?' · '+st.pct+'%':''}</span></div>${st.total?`<div class="progress subtask-progress"><span style="width:${st.pct}%"></span></div>`:''}${steps}<button class="text-button subtask-add" data-action="add-subtask" data-project="${escapeHtml(t.id)}">+ Добавить шаг без срока</button></div>
+    return `<div class="task-card ${t.status==='done'?'done':''}" data-task-id="${escapeHtml(t.id)}" style="border-left:3px solid ${escapeHtml(t.color||project(t.projectId)?.color||'#596479')}">${moveControls}<input type="checkbox" class="check" aria-label="Выполнено: ${escapeHtml(t.title)}" data-check-task="${escapeHtml(t.id)}" ${t.status==='done'?'checked':''}><div class="task-wrap"><div class="row-main"><div class="row-title">${escapeHtml(t.title)}</div><div class="meta-stack">${t.color?`<span class="tag"><i class="color-dot" style="background:${escapeHtml(t.color)}"></i>Цвет задачи</span>`:''}${projectTag(t.projectId)}<span class="tag ${t.priority==='high'?'important':''}">${PRIORITIES[t.priority]}</span><select class="task-status-control" data-task-status="${escapeHtml(t.id)}" aria-label="Статус задачи ${escapeHtml(t.title)}">${optionList(TASK_STATES,t.status)}</select><span class="${overdue?'pill overdue':'row-sub'}">${due}</span></div>
+    <div class="subtasks-box ${open?'is-expanded':''}"><button type="button" class="subtasks-toggle disclosure-toggle" data-action="toggle-task-steps" data-id="${escapeHtml(t.id)}" aria-expanded="${open}" aria-label="${open?'Свернуть':'Развернуть'} подзадачи: ${escapeHtml(t.title)}"><span class="disclosure-chevron" aria-hidden="true">▸</span><strong>Подзадачи</strong><span class="disclosure-count">${label}${st.total?' · '+st.pct+'%':''}</span></button>${st.total?`<div class="progress subtask-progress"><span style="width:${st.pct}%"></span></div>`:''}<div class="subtasks-content" ${open?'':'hidden'}>${t.notes?`<div class="row-sub task-expanded-notes">${escapeHtml(t.notes).slice(0,210)}</div>`:''}${steps}<button class="text-button subtask-add" data-action="add-subtask" data-project="${escapeHtml(t.id)}">+ Добавить шаг без срока</button></div></div>
     </div><div class="task-actions"><button class="icon-btn" data-action="edit-task" data-id="${escapeHtml(t.id)}" title="Редактировать">✎</button><button class="icon-btn" data-action="delete-task" data-id="${escapeHtml(t.id)}" title="Удалить">✕</button></div></div></div>`;
   }
   function socialGoals(){const m=today().slice(0,7);return CHANNELS.map(ch=>{const done=data.posts.filter(p=>p.channel===ch&&p.status==='published'&&monthOf(p.date)===m).length,goal=data.goals[ch]||0;return `<div class="social-row"><div class="social-meta"><strong>${escapeHtml(ch)}</strong><span>${done} / ${goal||'без цели'}</span></div><div class="progress"><span style="width:${goal?Math.min(100,Math.round(done/goal*100)):0}%"></span></div></div>`;}).join('');}
@@ -327,16 +332,16 @@
   function uniWorkSteps(work){const list=work.subtasks||[];const done=list.filter(s=>s.done).length;return {done,total:list.length,pct:list.length?Math.round(done/list.length*100):0};}
   function subjectOptions(value){return `<option value="">Выбери предмет</option>`+data.universitySubjects.map(s=>`<option value="${escapeHtml(s.id)}" ${value===s.id?'selected':''}>${escapeHtml(s.title)}${s.sessionId?' · '+escapeHtml(universitySessionLabel(s.sessionId)):''}</option>`).join('');}
   function uniWorkCard(x){
-    const overdue=academicOverdue(x),count=uniWorkSteps(x);
+    const overdue=academicOverdue(x),count=uniWorkSteps(x),open=expandedUniversityWorks.has(x.id);
     const steps=(x.subtasks||[]).map(st=>`<div class="uni-step"><label class="uni-step-label"><input type="checkbox" class="check" data-uni-step="${escapeHtml(st.id)}" data-work="${escapeHtml(x.id)}" ${st.done?'checked':''}><span class="${st.done?'uni-checked':''}">${escapeHtml(st.title)}</span></label><div class="study-buttons"><button class="icon-btn" data-action="edit-uni-step" data-id="${escapeHtml(st.id)}" data-work="${escapeHtml(x.id)}" title="Изменить шаг" aria-label="Изменить шаг">✎</button><button class="icon-btn" data-action="delete-uni-step" data-id="${escapeHtml(st.id)}" data-work="${escapeHtml(x.id)}" title="Удалить шаг" aria-label="Удалить шаг">✕</button></div></div>`).join('');
-    return `<article class="academic-card uni-work ${x.status==='passed'?'uni-work-done':''}" data-uni-work-id="${escapeHtml(x.id)}">
-      <div class="uni-work-top"><label class="uni-work-complete"><input type="checkbox" class="check" data-uni-work-check="${escapeHtml(x.id)}" ${x.status==='passed'?'checked':''} aria-label="Закрыть работу ${escapeHtml(x.title)}"></label><div class="uni-work-body"><div class="academic-card-head"><span class="tag">${ACADEMIC_TYPES[x.type]}</span><span class="pill ${x.status==='passed'?'done':x.status==='debt'||overdue?'overdue':''}">${ACADEMIC_STATUSES[x.status]}</span></div><h3 class="uni-work-title">${escapeHtml(x.title)}</h3><div class="row-sub">${x.due?`${overdue?'Просрочено: ':'Срок: '}${prettyDate(x.due,true)}`:'Без срока'} · ${PRIORITIES[x.priority]} · Шаги: ${count.done}/${count.total}</div></div><div class="study-buttons"><button class="icon-btn" data-action="edit-academic" data-id="${escapeHtml(x.id)}" title="Редактировать работу" aria-label="Редактировать работу">✎</button><button class="icon-btn" data-action="delete-academic" data-id="${escapeHtml(x.id)}" title="Удалить работу" aria-label="Удалить работу">✕</button></div></div>
+    return `<article class="academic-card uni-work ${x.status==='passed'?'uni-work-done':''} ${open?'is-expanded':''}" data-uni-work-id="${escapeHtml(x.id)}">
+      <div class="uni-work-top"><label class="uni-work-complete"><input type="checkbox" class="check" data-uni-work-check="${escapeHtml(x.id)}" ${x.status==='passed'?'checked':''} aria-label="Закрыть работу ${escapeHtml(x.title)}"></label><div class="uni-work-body"><div class="academic-card-head"><span class="tag">${ACADEMIC_TYPES[x.type]}</span><span class="pill ${x.status==='passed'?'done':x.status==='debt'||overdue?'overdue':''}">${ACADEMIC_STATUSES[x.status]}</span></div><button type="button" class="uni-work-toggle disclosure-toggle" data-action="toggle-uni-work" data-id="${escapeHtml(x.id)}" aria-expanded="${open}" aria-label="${open?'Свернуть':'Развернуть'} шаги работы: ${escapeHtml(x.title)}"><span class="disclosure-chevron" aria-hidden="true">▸</span><span class="uni-work-title">${escapeHtml(x.title)}</span></button><div class="row-sub">${x.due?`${overdue?'Просрочено: ':'Срок: '}${prettyDate(x.due,true)}`:'Без срока'} · ${PRIORITIES[x.priority]} · Шаги: ${count.done}/${count.total}</div></div></div>
       ${count.total?`<div class="progress uni-work-progress"><span style="width:${count.pct}%"></span></div>`:''}
-      <div class="uni-steps" aria-label="Подзадачи работы">${steps}</div>
+      <div class="uni-work-extra" ${open?'':'hidden'}><div class="study-buttons uni-work-extra-controls"><button class="icon-btn" data-action="edit-academic" data-id="${escapeHtml(x.id)}" title="Редактировать работу" aria-label="Редактировать работу">✎ Редактировать</button><button class="icon-btn" data-action="delete-academic" data-id="${escapeHtml(x.id)}" title="Удалить работу" aria-label="Удалить работу">✕ Удалить</button></div><div class="uni-steps" aria-label="Подзадачи работы">${steps||'<p class="subnote">Пока нет шагов. Добавь первый ниже.</p>'}</div>
       <form class="uni-quick-form" data-uni-quick="${escapeHtml(x.id)}"><input name="step" required maxlength="300" placeholder="Новый шаг (например, чертёж №1)" aria-label="Новая подзадача для ${escapeHtml(x.title)}"><button class="btn btn-small" type="submit">+ Шаг</button></form>
       ${count.total&&count.done===count.total&&x.status!=='passed'?'<p class="subnote">Все шаги готовы. Отметь работу закрытой после сдачи или принятия преподавателем.</p>':''}
       ${x.nextStep?`<p class="row-sub">Следующее действие: ${escapeHtml(x.nextStep)}</p>`:''}${x.notes?`<p class="academic-notes">${escapeHtml(x.notes)}</p>`:''}
-      <div class="uni-work-footer"><select data-academic-status="${escapeHtml(x.id)}" aria-label="Статус работы ${escapeHtml(x.title)}">${optionList(ACADEMIC_STATUSES,x.status)}</select></div>
+      <div class="uni-work-footer"><select data-academic-status="${escapeHtml(x.id)}" aria-label="Статус работы ${escapeHtml(x.title)}">${optionList(ACADEMIC_STATUSES,x.status)}</select></div></div>
     </article>`;
   }
   function uniSubjectCard(sub,works){
@@ -344,7 +349,8 @@
     const closed=works.filter(x=>x.status==='passed').length;
     const filtered=works.filter(x=>academicFilter==='all'||(academicFilter==='doing'?['progress','ready','submitted','debt'].includes(x.status):academicFilter==='planned'?x.status==='planned':academicFilter==='passed'?x.status==='passed':academicFilter==='debt'?x.status==='debt'||academicOverdue(x):ACADEMIC_EXAMS.has(x.type)));
     filtered.sort((a,b)=>(a.due||'9999').localeCompare(b.due||'9999'));
-    return `<section class="panel uni-subject" data-uni-subject-id="${escapeHtml(sub.id)}"><div class="uni-subject-head"><div class="uni-subject-info"><div class="eyebrow">ПРЕДМЕТ</div><h2>${escapeHtml(sub.title)}</h2><p class="uni-subject-meta">${sub.teacher?'Преподаватель: '+escapeHtml(sub.teacher)+' · ':''}${escapeHtml(universitySessionLabel(sub.sessionId))}${sub.due?' · Общий срок: '+prettyDate(sub.due,true):''}</p><div class="uni-subject-tags"><span class="pill ${state.key==='debt'||state.key==='overdue'?'overdue':state.key==='complete'?'done':''}">${state.label}</span><span class="tag">${closed} / ${works.length} работ закрыто</span></div>${sub.notes?`<p class="row-sub">${escapeHtml(sub.notes)}</p>`:''}</div><div class="study-buttons"><button class="btn btn-small btn-accent" data-action="add-academic" data-subject="${escapeHtml(sub.id)}">+ Работа</button><button class="icon-btn" data-action="edit-uni-subject" data-id="${escapeHtml(sub.id)}" title="Редактировать предмет" aria-label="Редактировать предмет">✎</button><button class="icon-btn" data-action="delete-uni-subject" data-id="${escapeHtml(sub.id)}" title="Удалить предмет" aria-label="Удалить предмет">✕</button></div></div>
+    const open=expandedUniversitySubjects.has(sub.id);
+    return `<section class="panel uni-subject ${open?'is-expanded':'is-compact'}" data-uni-subject-id="${escapeHtml(sub.id)}"><div class="uni-subject-head"><div class="uni-subject-info"><div class="eyebrow">ПРЕДМЕТ</div><button type="button" class="uni-subject-toggle disclosure-toggle" data-action="toggle-uni-subject" data-id="${escapeHtml(sub.id)}" aria-expanded="${open}" aria-label="${open?'Свернуть':'Развернуть'} сведения о предмете ${escapeHtml(sub.title)}"><span class="disclosure-chevron" aria-hidden="true">▸</span><span class="uni-subject-title">${escapeHtml(sub.title)}</span></button><div class="uni-subject-tags"><span class="pill ${state.key==='debt'||state.key==='overdue'?'overdue':state.key==='complete'?'done':''}">${state.label}</span><span class="tag">${closed} / ${works.length} работ закрыто</span></div><div class="uni-subject-detail" ${open?'':'hidden'}><p class="uni-subject-meta">${sub.teacher?'Преподаватель: '+escapeHtml(sub.teacher)+' · ':''}${escapeHtml(universitySessionLabel(sub.sessionId))}${sub.due?' · Общий срок: '+prettyDate(sub.due,true):''}</p>${sub.notes?`<p class="row-sub">${escapeHtml(sub.notes)}</p>`:''}</div></div><div class="study-buttons"><button class="btn btn-small btn-accent" data-action="add-academic" data-subject="${escapeHtml(sub.id)}">+ Работа</button><button class="icon-btn" data-action="edit-uni-subject" data-id="${escapeHtml(sub.id)}" title="Редактировать предмет" aria-label="Редактировать предмет">✎</button><button class="icon-btn" data-action="delete-uni-subject" data-id="${escapeHtml(sub.id)}" title="Удалить предмет" aria-label="Удалить предмет">✕</button></div></div>
       <div class="uni-work-list">${filtered.map(uniWorkCard).join('')||'<div class="empty">В выбранной категории работ нет. Нажми «+ Работа», чтобы добавить ЛР, КР или экзамен.</div>'}</div></section>`;
   }
   function renderUniversity(){
@@ -636,6 +642,33 @@
     const arrow=e.target.closest('[data-task-move]');if(arrow){stepTask(arrow.dataset.taskMove,Number(arrow.dataset.direction));return;}
     const btn=e.target.closest('[data-action]');if(!btn)return;const id=btn.dataset.id,p=btn.dataset.project||'';
     switch(btn.dataset.action){
+      case 'toggle-task-steps':{
+        const open=!expandedTaskSteps.has(id);
+        if(open)expandedTaskSteps.add(id);else expandedTaskSteps.delete(id);
+        const card=btn.closest('.task-card');
+        card?.querySelector('.subtasks-content')?.toggleAttribute('hidden',!open);
+        card?.querySelector('.subtasks-box')?.classList.toggle('is-expanded',open);
+        btn.setAttribute('aria-expanded',String(open));btn.setAttribute('aria-label',`${open?'Свернуть':'Развернуть'} подзадачи: ${data.tasks.find(t=>t.id===id)?.title||''}`);
+        break;
+      }
+      case 'toggle-uni-work':{
+        const open=!expandedUniversityWorks.has(id);
+        if(open)expandedUniversityWorks.add(id);else expandedUniversityWorks.delete(id);
+        const card=btn.closest('.uni-work');
+        card?.querySelector('.uni-work-extra')?.toggleAttribute('hidden',!open);
+        card?.classList.toggle('is-expanded',open);
+        btn.setAttribute('aria-expanded',String(open));btn.setAttribute('aria-label',`${open?'Свернуть':'Развернуть'} шаги работы: ${data.academic.find(w=>w.id===id)?.title||''}`);
+        break;
+      }
+      case 'toggle-uni-subject':{
+        const open=!expandedUniversitySubjects.has(id);
+        if(open)expandedUniversitySubjects.add(id);else expandedUniversitySubjects.delete(id);
+        const card=btn.closest('.uni-subject');
+        card?.querySelector('.uni-subject-detail')?.toggleAttribute('hidden',!open);
+        card?.classList.toggle('is-expanded',open);card?.classList.toggle('is-compact',!open);
+        btn.setAttribute('aria-expanded',String(open));btn.setAttribute('aria-label',`${open?'Свернуть':'Развернуть'} сведения о предмете ${data.universitySubjects.find(s=>s.id===id)?.title||''}`);
+        break;
+      }
       case 'uni-tab':if(['attendance','works','sessions'].includes(btn.dataset.tab)){universityTab=btn.dataset.tab;render();}break;
       case 'overview-day-prev':overviewDate=iso(shiftDate(dateObj(overviewDate),-1));render();break;
       case 'overview-day-next':overviewDate=iso(shiftDate(dateObj(overviewDate),1));render();break;

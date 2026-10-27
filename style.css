@@ -455,3 +455,61 @@ input[type="checkbox"]{-webkit-appearance:checkbox;appearance:checkbox}
   .uni-quick-form input {width:100%;flex:none;}
   .uni-quick-form button {align-self:flex-start;}
 }
+
+/* v2.9.2: компактные задачи и независимые уровни раскрытия ВУЗа. */
+.subtasks-content[hidden], .uni-work-extra[hidden], .uni-subject-detail[hidden] {display:none !important;}
+.disclosure-toggle {
+  display:flex; align-items:center; gap:8px; min-width:0; max-width:100%;
+  border:0; padding:5px 0; border-radius:7px; background:transparent;
+  color:var(--text); font:inherit; text-align:left; cursor:pointer;
+}
+.disclosure-toggle:hover {color:#edc57e;}
+.disclosure-chevron {flex:0 0 auto; display:inline-grid; place-items:center; width:16px; font-size:17px; line-height:1; color:var(--accent); transition:transform .16s ease;}
+.disclosure-toggle[aria-expanded="true"] .disclosure-chevron {transform:rotate(90deg);}
+.subtasks-box {padding:8px 12px; margin-top:11px;}
+.subtasks-box.is-expanded {padding-bottom:12px;}
+.subtasks-toggle {width:100%; min-height:31px; padding:3px 0;}
+.subtasks-toggle strong {font-size:12px; font-weight:650;}
+.disclosure-count {font-size:11px; color:var(--muted); margin-left:auto; white-space:nowrap;}
+.subtasks-box .subtask-progress {margin:6px 0 0; height:4px;}
+.subtasks-content {padding-top:9px;}
+.task-expanded-notes {margin:0 0 10px; line-height:1.5; overflow-wrap:break-word; white-space:pre-wrap;}
+.uni-subject .uni-subject-toggle {width:100%; gap:8px; padding:0; margin:4px 0 7px; align-items:flex-start;}
+.uni-subject-title {font-size:21px; font-weight:700; letter-spacing:-.25px; line-height:1.3; min-width:0; overflow-wrap:break-word;}
+.uni-subject-toggle .disclosure-chevron {margin-top:5px;}
+.uni-subject .uni-subject-tags {margin:6px 0;}
+.uni-subject-detail {padding-top:8px;}
+.uni-subject-detail .row-sub {overflow-wrap:break-word; margin-top:6px;}
+.uni-work-list {gap:9px; margin-top:13px;}
+.uni-subject.is-compact .uni-work {padding:11px 13px;}
+.uni-work.is-expanded {border-color:#766344;}
+.uni-work-toggle {width:100%; margin:0 0 4px; gap:6px; align-items:flex-start;}
+.uni-work-toggle .disclosure-chevron {margin-top:3px;}
+.uni-work-toggle .uni-work-title {display:block; flex:1; margin:0; min-width:0; font-size:16px; font-weight:650; text-align:left; overflow-wrap:break-word;}
+.uni-work-extra {border-top:1px solid var(--border2); margin-top:10px; padding-top:2px; min-width:0;}
+.uni-work-extra .uni-work-footer {margin-top:12px;}
+.uni-work .academic-card-head {justify-content:flex-start; margin-bottom:5px; gap:7px;}
+.uni-work .uni-work-progress {margin-top:8px; height:4px;}
+@media(max-width:720px){
+  .subtasks-box {padding:6px 9px;}
+  .disclosure-toggle {min-height:39px;}
+  .uni-subject-title {font-size:18px;}
+  .uni-subject.is-compact .uni-work {padding:10px;}
+  .uni-work-toggle .uni-work-title {font-size:15px;}
+  .uni-work-top {row-gap:3px;}
+  .uni-work-top>.study-buttons {margin-top:-1px;}
+}
+
+/* Действия редактирования работы доступны после раскрытия, не утяжеляют каждую строку. */
+.uni-work-extra-controls {justify-content:flex-end; gap:7px; padding:1px 0 2px;}
+.uni-work-extra-controls .icon-btn {font-size:12px; border:1px solid #364155; background:#202938; min-height:35px;}
+.uni-work-extra-controls .icon-btn:hover {background:#354053;}
+@media(max-width:720px){
+  .uni-work-top {grid-template-columns:24px minmax(0,1fr);}
+  .uni-work-complete {padding-top:15px;}
+}
+@media(max-width:720px) {
+  /* Действия задачи не должны занимать две вертикальные строки по 45px. */
+  .task-card .task-actions {flex-direction:row; justify-content:flex-end; align-items:center; gap:4px; margin-top:6px;}
+  .task-card .task-actions .icon-btn {min-width:40px; min-height:37px;}
+}
