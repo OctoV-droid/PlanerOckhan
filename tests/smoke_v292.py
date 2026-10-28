@@ -4,9 +4,9 @@ from pathlib import Path
 from playwright.sync_api import sync_playwright
 ROOT=Path(__file__).resolve().parents[1]
 html=(ROOT/'index.html').read_text()
-html=html.replace('<link rel="stylesheet" href="style.css?v=292">',f'<style>{(ROOT/"style.css").read_text()}</style>')
+html=html.replace('<link rel="stylesheet" href="style.css?v=293">',f'<style>{(ROOT/"style.css").read_text()}</style>')
 for file in ('storage.js','analytics.js','habits.js','university.js','app.js','pwa.js'):
- html=html.replace(f'<script src="{file}?v=292" defer></script>','')
+ html=html.replace(f'<script src="{file}?v=293" defer></script>','')
 html=html.replace('</body>','\n'.join(f'<script>{(ROOT/file).read_text()}</script>' for file in ('storage.js','analytics.js','habits.js','university.js','app.js'))+'</body>')
 MOCK="""window.__store=REPLACE;window.__fail=false;Object.defineProperty(window,'localStorage',{value:{getItem(k){return Object.hasOwn(window.__store,k)?window.__store[k]:null},setItem(k,v){if(window.__fail)throw new Error('QuotaExceededError');window.__store[k]=String(v)},removeItem(k){delete window.__store[k]},clear(){window.__store={}},get length(){return Object.keys(window.__store).length}},configurable:true});window.confirm=()=>true;window.alert=m=>{window._alerts=(window._alerts||[]).concat(m)};"""
 results=[]

@@ -6,9 +6,9 @@ import json
 from playwright.sync_api import sync_playwright
 
 ROOT=Path(__file__).resolve().parents[1]
-h=(ROOT/'index.html').read_text().replace('<link rel="stylesheet" href="style.css?v=292">',f'<style>{(ROOT/"style.css").read_text()}</style>')
+h=(ROOT/'index.html').read_text().replace('<link rel="stylesheet" href="style.css?v=293">',f'<style>{(ROOT/"style.css").read_text()}</style>')
 for fn in ('storage.js','analytics.js','habits.js','university.js','app.js','pwa.js'):
-    h=h.replace(f'<script src="{fn}?v=292" defer></script>','')
+    h=h.replace(f'<script src="{fn}?v=293" defer></script>','')
 h=h.replace('</body>','\n'.join(f'<script>{(ROOT/fn).read_text()}</script>' for fn in ('storage.js','analytics.js','habits.js','university.js','app.js'))+'</body>')
 data={
     'version':9,

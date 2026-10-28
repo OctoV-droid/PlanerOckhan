@@ -1,4 +1,4 @@
-/* МАСТЕРСКАЯ v2.9.2 — проекты с задачами, ручной порядок, подзадачи и активность.
+/* МАСТЕРСКАЯ v2.9.3 — проекты с задачами, ручной порядок, подзадачи и активность.
    Данные хранятся ТОЛЬКО в localStorage этого браузера.
    Ни токенов GitHub, ни секретов, ни запросов к внешним сервисам. */
 (() => {
@@ -9,6 +9,7 @@
   const FORMATS = ['Пост', 'Reels / Short', 'Карусель', 'История', 'Видео', 'Кейс'];
   const STAGES = {idea:'Идея', draft:'В работе', ready:'Готово к публикации', published:'Опубликовано'};
   const TASK_SORTS = {manual:'Мой порядок',priority:'По важности',due:'По сроку',project:'По проектам',status:'По состоянию'};
+  const PROJECT_SORTS = {manual:'Мой порядок',done:'Больше выполнено',progress:'По проценту готовности',active:'Больше в работе',name:'По названию'};
   const TASK_STATES = {todo:'Запланировано',doing:'В работе',done:'Выполнено'};
   const STUDY_STATES = {planned:'В планах',learning:'Изучаю',practice:'Практикую',done:'Освоено'};
   const STUDY_AREAS = ['3D и материалы','Unity и GameDev','Digital Art','Веб-дизайн','ПГС и чертежи','Другое'];
@@ -23,7 +24,8 @@
   const ATTENDANCE_STATUSES = {attended:'Посетил',missed:'Пропустил',excused:'Уважительная причина',cancelled:'Отменена'};
   const COLORS = ['#b8a2d1','#d5bd88','#91b9b0','#96accb','#ce998c','#c0c5a1'];
   const defaultData = () => ({
-    version:9,
+    version:10,
+    projectSort:'manual',
     taskSort:'manual',
     projects:[
       {id:'tif',name:'TIF / Новониколаевск',color:'#a5a5b8'},
@@ -47,6 +49,9 @@
   let taskFilter = 'doing';
   let selectedProjectId = null;
   let draggedTaskId = null;
+  let draggedUniWorkId = null;
+  let draggedUniSubjectId = null;
+  let projectSort='manual';
   let academicFilter = 'all';
   let academicSubjectFilter = 'all';
   let academicSessionFilter = 'all';
@@ -54,6 +59,8 @@
   let attendanceStart = iso(getMonday(new Date()));
   let overviewDate = today();
   let activityDays = 30;
+  let activitySelectedDay = today();
+  let calendarSelectedDay = today();
   let query = '';
   let selectedMonth = new Date(); selectedMonth.setDate(1);
   let editMode = {type:'task',id:null};
@@ -63,6 +70,7 @@
   const expandedUniversityWorks = new Set();
   const expandedUniversitySubjects = new Set();
 
+  projectSort=data.projectSort;
   function clone(x){return JSON.parse(JSON.stringify(x));}
   function escapeHtml(s){return String(s ?? '').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));}
   function safeId(){return typeof crypto!=='undefined' && crypto.randomUUID ? crypto.randomUUID() : `${Date.now()}-${Math.random().toString(36).slice(2)}`;}
@@ -128,6 +136,7 @@
     const d=defaultData(); if(!raw || typeof raw!=='object' || Array.isArray(raw))throw Error('Некорректный файл');
     if(Array.isArray(raw.projects))d.projects=raw.projects.slice(0,200).filter(p=>p && typeof p.name==='string').map(p=>({id:String(p.id||safeId()).slice(0,90),name:p.name.slice(0,90),color:COLORS.includes(p.color)||/^#[0-9a-fA-F]{6}$/.test(p.color||'')?p.color:'#b8a2d1'}));
     d.taskSort=TASK_SORTS[raw.taskSort]?raw.taskSort:'manual';
+    d.projectSort=PROJECT_SORTS[raw.projectSort]?raw.projectSort:'manual';
     if(Array.isArray(raw.tasks))d.tasks=raw.tasks.slice(0,5000).filter(t=>t&&typeof t.title==='string').map(t=>({id:String(t.id||safeId()).slice(0,90),title:t.title.slice(0,300),projectId:String(t.projectId||''),due:hasDate(t.due)?t.due:'',priority:PRIORITIES[t.priority]?t.priority:'normal',status:TASK_STATES[t.status]?t.status:'todo',lastOpenStatus:['todo','doing'].includes(t.lastOpenStatus)?t.lastOpenStatus:'doing',color:window.MasterskayaAnalytics.color(t.color,''),notes:String(t.notes||'').slice(0,10000),subtasks:Array.isArray(t.subtasks)?t.subtasks.slice(0,250).filter(st=>st&&typeof st.title==='string').map(st=>({id:String(st.id||safeId()).slice(0,90),title:st.title.slice(0,300),done:st.done===true})):[]}));
     if(Array.isArray(raw.habits))d.habits=raw.habits.slice(0,250).filter(h=>h&&typeof h.title==='string').map(h=>({
       id:String(h.id||safeId()).slice(0,90),title:h.title.slice(0,100),icon:String(h.icon||'✳').slice(0,10),color:window.MasterskayaAnalytics.color(h.color,'#91b9b0'),createdAt:hasDate(h.createdAt)?h.createdAt:today()
@@ -209,18 +218,18 @@
   function hoursString(min){return min>=60?`${Math.floor(min/60)} ч ${min%60?min%60+' мин':''}`.trim():`${min} мин`;}
   function categoryLegend(categories){return `<div class="category-legend">${categories.map(c=>`<span><i style="background:${escapeHtml(c.color)}"></i>${escapeHtml(c.label)}</span>`).join('')}</div>`;}
   function stackedPlot(grouped,kind){
-    const w=960,h=245,pad=23,usable=w-pad*2,base=195,top=28,slot=usable/grouped.days.length;
-    const max=Math.max(1,...grouped.days.map(d=>d.parts.reduce((sum,p)=>sum+p.value,0)));
+    const w=960,h=270,padL=54,padR=18,usable=w-padL-padR,base=212,top=32,slot=usable/grouped.days.length;
+    const totals=grouped.days.map(d=>d.parts.reduce((sum,p)=>sum+p.value,0));
+    const max=Math.max(1,...totals),format=x=>kind==='minutes'?hoursString(x):String(x);
+    const grid=[0,0.25,0.5,0.75,1].map(k=>{const y=base-(base-top)*k;return `<line x1="${padL}" y1="${y}" x2="${w-padR}" y2="${y}" stroke="#485366" stroke-opacity=".6" stroke-dasharray="${k?'3 6':'0'}"/><text x="${padL-6}" y="${y+4}" text-anchor="end" font-size="12" fill="#aab4c6">${escapeHtml(format(Math.round(max*k)))}</text>`;}).join('');
     const bars=grouped.days.map((d,i)=>{
-      const x=pad+i*slot+slot*.14,bw=Math.max(2,slot*.72);
-      let cursor=base;
-      const units=d.parts.reduce((sum,p)=>sum+p.value,0);
-      const parts=d.parts.map(p=>{const height=p.value/max*(base-top);cursor-=height;
-        return `<rect x="${x.toFixed(1)}" y="${cursor.toFixed(1)}" width="${bw.toFixed(1)}" height="${height.toFixed(1)}" fill="${escapeHtml(p.color)}"/>`;}).join('');
-      return `<g><title>${escapeHtml(prettyDate(d.date,true))}: ${kind==='minutes'?hoursString(units):units+' действий'}${d.parts.map(p=>' · '+p.label+': '+p.value).join('')}</title>${parts}</g>`;
+      const x=padL+i*slot+slot*.15,bw=Math.max(2,slot*.7),units=totals[i];let cursor=base;
+      const parts=d.parts.filter(p=>p.value>0).map(p=>{const height=p.value/max*(base-top);cursor-=height;return `<rect x="${x.toFixed(1)}" y="${cursor.toFixed(1)}" width="${bw.toFixed(1)}" height="${height.toFixed(1)}" fill="${escapeHtml(p.color)}" rx="1"/>`;}).join('');
+      const label=units&&(grouped.days.length<=14||i%Math.max(1,Math.ceil(grouped.days.length/12))===0)?`<text x="${(x+bw/2).toFixed(1)}" y="${Math.max(16,cursor-6).toFixed(1)}" text-anchor="middle" fill="#e3e9f1" font-size="12">${kind==='minutes'?Math.round(units/60*10)/10:units}</text>`:'';
+      return `<g role="button" tabindex="0" class="activity-chart-bar ${activitySelectedDay===d.date?'is-selected':''}" data-action="activity-select-day" data-day="${d.date}" aria-label="${escapeHtml(prettyDate(d.date,true))}: ${escapeHtml(format(units))}" style="cursor:pointer"><title>${escapeHtml(prettyDate(d.date,true))}: ${escapeHtml(format(units))}${escapeHtml(d.parts.map(p=>' · '+p.label+': '+p.value).join(''))}</title>${parts}<rect x="${x}" y="${top}" width="${bw}" height="${base-top}" fill="transparent"/><rect class="chart-bar-outline" x="${x-1}" y="${top}" width="${bw+2}" height="${base-top}" fill="none"/>${label}</g>`;
     }).join('');
-    const ticks=grouped.days.map((d,i)=>(i===0||i===grouped.days.length-1||i%Math.ceil(grouped.days.length/6)===0)?`<text x="${(pad+i*slot+slot/2).toFixed(1)}" y="228" text-anchor="middle" fill="#a1abbb" font-size="12">${escapeHtml(prettyDate(d.date))}</text>`:'').join('');
-    return `<svg class="activity-svg" viewBox="0 0 ${w} ${h}" role="img" aria-label="${kind==='minutes'?'Время':'Выполненные действия'} по проектам и категориям"><line x1="${pad}" y1="${base}" x2="${w-pad}" y2="${base}" stroke="#566174"/>${bars}${ticks}</svg>`;
+    const ticks=grouped.days.map((d,i)=>(i===0||i===grouped.days.length-1||i%Math.ceil(grouped.days.length/6)===0)?`<text x="${(padL+i*slot+slot/2).toFixed(1)}" y="244" text-anchor="middle" fill="#a1abbb" font-size="12">${escapeHtml(prettyDate(d.date))}</text>`:'').join('');
+    return `<svg class="activity-svg" viewBox="0 0 ${w} ${h}" role="group" aria-label="${kind==='minutes'?'Время':'Выполненные действия'} по дням. Нажми на столбец для детализации">${grid}${bars}${ticks}</svg>`;
   }
   function categoryTotals(grouped,kind){
     const counts=new Map();for(const d of grouped.days)for(const part of d.parts)counts.set(part.key,(counts.get(part.key)||0)+part.value);
@@ -239,6 +248,10 @@
     const diff=cur.done-prev.done;const diffMinutes=cur.minutes-prev.minutes;
     const recent=[...data.workSessions].sort((a,b)=>b.date.localeCompare(a.date)).slice(0,12);
     const byTask=taskCategories(series),byMinute=minuteCategories(series);
+    const dayEvents=data.activityLog.filter(x=>x.date===activitySelectedDay);
+    const daySessions=data.workSessions.filter(x=>x.date===activitySelectedDay);
+    const dayDone=dayEvents.filter(x=>x.delta>0).length,dayReturn=dayEvents.filter(x=>x.delta<0).length;
+    const dayTime=daySessions.reduce((total,x)=>total+x.minutes,0);
     return `${heading('ЛИЧНАЯ АНАЛИТИКА','Активность','Следи за результатами и затраченным временем без штрафов за отдых. Дни без записей не считаются регрессом.','<button class="btn btn-accent" data-action="add-work">+ Записать рабочую сессию</button>')}
     <div class="activity-period" role="group" aria-label="Период графика">${[7,30,90].map(d=>`<button class="${activityDays===d?'selected':''}" data-action="activity-period" data-days="${d}" aria-pressed="${activityDays===d}">${d} дней</button>`).join('')}</div>
     <div class="activity-summary">
@@ -247,9 +260,12 @@
       <div class="stat-card"><div class="stat-icon">◷</div><div class="stat-value">${hoursString(cur.minutes)}</div><div class="stat-label">Записано времени · ${diffMinutes>0?'+':''}${diffMinutes} мин</div></div>
       <div class="stat-card"><div class="stat-icon">▦</div><div class="stat-value">${cur.active} / ${activityDays}</div><div class="stat-label">Дней с записями активности</div></div>
     </div>
+    <section class="panel activity-day-panel"><div class="activity-day-head"><div><div class="eyebrow">АКТИВНОСТЬ ПО ДНЯМ</div><h2>${escapeHtml(dateObj(activitySelectedDay).toLocaleDateString('ru-RU',{weekday:'long',day:'numeric',month:'long',year:'numeric'}))}</h2></div><div class="activity-day-controls"><button class="btn btn-small" data-action="activity-prev-day" title="Предыдущий день" aria-label="Предыдущий день">←</button><input id="activity-day-picker" type="date" value="${activitySelectedDay}" max="${today()}" aria-label="Выбрать день активности"><button class="btn btn-small" data-action="activity-next-day" title="Следующий день" ${activitySelectedDay>=today()?'disabled':''} aria-label="Следующий день">→</button><button class="btn btn-small" data-action="activity-today">Сегодня</button></div></div>
+      <div class="activity-day-stats"><div><strong>${dayDone}</strong><span>Завершено действий</span></div><div><strong>${dayReturn}</strong><span>Повторно открыто</span></div><div><strong>${hoursString(dayTime)}</strong><span>Записано времени</span></div></div>
+      <div class="activity-day-entries"><div><h3>Действия</h3>${dayEvents.length?dayEvents.map(x=>`<div class="activity-day-entry"><i class="color-dot" style="background:${escapeHtml(window.MasterskayaAnalytics.color(x.color,project(x.projectId)?.color||'#96accb'))}"></i><span>${x.delta>0?'✓ ':'↶ '}${escapeHtml(x.title)}</span><b>${x.delta>0?'+1':'−1'}</b></div>`).join(''):'<p class="subnote">В этот день завершённых или повторно открытых задач нет.</p>'}</div><div><h3>Рабочие сессии</h3>${daySessions.length?daySessions.map(x=>`<div class="activity-day-entry"><span>${escapeHtml(x.projectId?projectLabel(x.projectId):x.area)}${x.note?' · '+escapeHtml(x.note):''}</span><b>${hoursString(x.minutes)}</b></div>`).join(''):'<p class="subnote">Рабочее время за этот день не записано.</p>'}</div></div></section>
     <section class="panel activity-panel"><div class="panel-title"><h2>Прогресс и возвращённые в работу действия</h2></div>
-    ${categoryLegend(byTask.categories)}${stackedPlot(byTask,'actions')}${categoryTotals(byTask,'actions')}<p class="subnote">Столбцы показывают <b>число выполненных действий</b>: цвет проекта для основных задач, голубой для подзадач, фиолетовый для ВУЗа. Повторное открытие учитывается отдельно в показателе выше. События из старой версии без привязки к проекту относятся к «Другому».</p></section>
-    <section class="panel activity-panel"><div class="panel-title"><h2>Время работы по направлениям</h2></div>${categoryLegend(byMinute.categories)}${stackedPlot(byMinute,'minutes')}${categoryTotals(byMinute,'minutes')}<p class="subnote">Минуты берутся <b>только из записанных рабочих сессий</b>; галочка задачи не означает автоматически затраченное время. Выбери проект при добавлении рабочей сессии, чтобы видеть его цвет на графике.</p></section>
+    ${categoryLegend(byTask.categories)}<p class="subnote">Числа слева показывают количество действий. Нажми на столбец или выбери дату выше.</p><div class="activity-chart-scroll" tabindex="0" aria-label="Прокручиваемый график действий">${stackedPlot(byTask,'actions')}</div>${categoryTotals(byTask,'actions')}<p class="subnote">Столбцы показывают <b>число выполненных действий</b>: цвет проекта для основных задач, голубой для подзадач, фиолетовый для ВУЗа. Повторное открытие учитывается отдельно в показателе выше. События из старой версии без привязки к проекту относятся к «Другому».</p></section>
+    <section class="panel activity-panel"><div class="panel-title"><h2>Время работы по направлениям</h2></div>${categoryLegend(byMinute.categories)}<p class="subnote">Шкала слева показывает время; детализация доступна при выборе даты.</p><div class="activity-chart-scroll" tabindex="0" aria-label="Прокручиваемый график времени">${stackedPlot(byMinute,'minutes')}</div>${categoryTotals(byMinute,'minutes')}<p class="subnote">Минуты берутся <b>только из записанных рабочих сессий</b>; галочка задачи не означает автоматически затраченное время. Выбери проект при добавлении рабочей сессии, чтобы видеть его цвет на графике.</p></section>
     <section class="panel activity-panel"><div class="panel-title"><h2>Последние рабочие сессии</h2><button class="text-button" data-action="add-work">+ Добавить ↗</button></div>
     ${recent.length?recent.map(x=>`<div class="list-row"><div class="row-main"><div class="row-title">${escapeHtml(x.area)} · ${hoursString(x.minutes)}</div><div class="row-sub">${prettyDate(x.date,true)}${x.projectId?' · '+escapeHtml(projectLabel(x.projectId)):''}${x.note?' · '+escapeHtml(x.note):''}</div></div><button class="icon-btn" data-action="edit-work" data-id="${escapeHtml(x.id)}" title="Изменить сессию">✎</button><button class="icon-btn" data-action="delete-work" data-id="${escapeHtml(x.id)}" title="Удалить сессию">✕</button></div>`).join(''):'<div class="empty">Рабочих сессий пока нет. Можно записать хотя бы 20 минут работы над проектом.</div>'}</section>
     <p class="subnote">События выполнения фиксируются начиная с версии 2.4. Для старых задач без истории выполнения прошлые даты восстановить невозможно.</p>`;
@@ -331,11 +347,41 @@
   function uniSubject(id){return data.universitySubjects.find(s=>s.id===id);}
   function uniWorkSteps(work){const list=work.subtasks||[];const done=list.filter(s=>s.done).length;return {done,total:list.length,pct:list.length?Math.round(done/list.length*100):0};}
   function subjectOptions(value){return `<option value="">Выбери предмет</option>`+data.universitySubjects.map(s=>`<option value="${escapeHtml(s.id)}" ${value===s.id?'selected':''}>${escapeHtml(s.title)}${s.sessionId?' · '+escapeHtml(universitySessionLabel(s.sessionId)):''}</option>`).join('');}
+  function swapVisibleOrder(array,sourceId,direction,visibleIds){
+    const pos=visibleIds.indexOf(sourceId),otherId=visibleIds[pos+direction];
+    if(pos<0||!otherId)return false;
+    const a=array.findIndex(x=>x.id===sourceId),b=array.findIndex(x=>x.id===otherId);
+    if(a<0||b<0)return false;
+    [array[a],array[b]]=[array[b],array[a]];
+    if(save()){render();return true;}render();return false;
+  }
+  function moveUniversityWork(id,direction){
+    const work=data.academic.find(x=>x.id===id);if(!work)return;
+    const siblings=data.academic.filter(x=>x.subjectId===work.subjectId&&uniMatchesFilter(x));
+    swapVisibleOrder(data.academic,id,direction,siblings.map(x=>x.id));
+  }
+  function uniMatchesFilter(x){
+    return academicFilter==='all'||(academicFilter==='doing'?['progress','ready','submitted','debt'].includes(x.status):academicFilter==='planned'?x.status==='planned':academicFilter==='passed'?x.status==='passed':academicFilter==='debt'?x.status==='debt'||academicOverdue(x):ACADEMIC_EXAMS.has(x.type));
+  }
+  function moveUniversitySubject(id,direction){
+    const shown=data.universitySubjects.filter(x=>(academicSubjectFilter==='all'||x.id===academicSubjectFilter)&&(academicSessionFilter==='all'||(academicSessionFilter==='none'?!x.sessionId:x.sessionId===academicSessionFilter)));
+    swapVisibleOrder(data.universitySubjects,id,direction,shown.map(x=>x.id));
+  }
+  function placeBefore(list,fromId,toId){
+    const a=list.findIndex(x=>x.id===fromId),b=list.findIndex(x=>x.id===toId);
+    if(a<0||b<0||a===b)return false;
+    const [item]=list.splice(a,1);list.splice(list.findIndex(x=>x.id===toId),0,item);return true;
+  }
+  function dropUniversityWork(fromId,toId){
+    const a=data.academic.find(x=>x.id===fromId),b=data.academic.find(x=>x.id===toId);
+    if(!a||!b||a.subjectId!==b.subjectId)return false;
+    if(placeBefore(data.academic,fromId,toId)){save();render();return true;}return false;
+  }
   function uniWorkCard(x){
     const overdue=academicOverdue(x),count=uniWorkSteps(x),open=expandedUniversityWorks.has(x.id);
     const steps=(x.subtasks||[]).map(st=>`<div class="uni-step"><label class="uni-step-label"><input type="checkbox" class="check" data-uni-step="${escapeHtml(st.id)}" data-work="${escapeHtml(x.id)}" ${st.done?'checked':''}><span class="${st.done?'uni-checked':''}">${escapeHtml(st.title)}</span></label><div class="study-buttons"><button class="icon-btn" data-action="edit-uni-step" data-id="${escapeHtml(st.id)}" data-work="${escapeHtml(x.id)}" title="Изменить шаг" aria-label="Изменить шаг">✎</button><button class="icon-btn" data-action="delete-uni-step" data-id="${escapeHtml(st.id)}" data-work="${escapeHtml(x.id)}" title="Удалить шаг" aria-label="Удалить шаг">✕</button></div></div>`).join('');
-    return `<article class="academic-card uni-work ${x.status==='passed'?'uni-work-done':''} ${open?'is-expanded':''}" data-uni-work-id="${escapeHtml(x.id)}">
-      <div class="uni-work-top"><label class="uni-work-complete"><input type="checkbox" class="check" data-uni-work-check="${escapeHtml(x.id)}" ${x.status==='passed'?'checked':''} aria-label="Закрыть работу ${escapeHtml(x.title)}"></label><div class="uni-work-body"><div class="academic-card-head"><span class="tag">${ACADEMIC_TYPES[x.type]}</span><span class="pill ${x.status==='passed'?'done':x.status==='debt'||overdue?'overdue':''}">${ACADEMIC_STATUSES[x.status]}</span></div><button type="button" class="uni-work-toggle disclosure-toggle" data-action="toggle-uni-work" data-id="${escapeHtml(x.id)}" aria-expanded="${open}" aria-label="${open?'Свернуть':'Развернуть'} шаги работы: ${escapeHtml(x.title)}"><span class="disclosure-chevron" aria-hidden="true">▸</span><span class="uni-work-title">${escapeHtml(x.title)}</span></button><div class="row-sub">${x.due?`${overdue?'Просрочено: ':'Срок: '}${prettyDate(x.due,true)}`:'Без срока'} · ${PRIORITIES[x.priority]} · Шаги: ${count.done}/${count.total}</div></div></div>
+    return `<article class="academic-card uni-work ${x.status==='passed'?'uni-work-done':''} ${open?'is-expanded':''}" data-uni-work-id="${escapeHtml(x.id)}" draggable="true">
+      <div class="uni-work-top"><div class="uni-order-controls"><span class="uni-drag-handle" draggable="true" data-uni-work-drag="${escapeHtml(x.id)}" title="Перетащить работу" aria-hidden="true">⠿</span><button type="button" class="icon-btn uni-order-arrow" data-action="move-uni-work" data-id="${escapeHtml(x.id)}" data-direction="-1" aria-label="Поднять работу выше">↑</button><button type="button" class="icon-btn uni-order-arrow" data-action="move-uni-work" data-id="${escapeHtml(x.id)}" data-direction="1" aria-label="Опустить работу ниже">↓</button></div><label class="uni-work-complete"><input type="checkbox" class="check" data-uni-work-check="${escapeHtml(x.id)}" ${x.status==='passed'?'checked':''} aria-label="Закрыть работу ${escapeHtml(x.title)}"></label><div class="uni-work-body"><div class="academic-card-head"><span class="tag">${ACADEMIC_TYPES[x.type]}</span><span class="pill ${x.status==='passed'?'done':x.status==='debt'||overdue?'overdue':''}">${ACADEMIC_STATUSES[x.status]}</span></div><button type="button" class="uni-work-toggle disclosure-toggle" data-action="toggle-uni-work" data-id="${escapeHtml(x.id)}" aria-expanded="${open}" aria-label="${open?'Свернуть':'Развернуть'} шаги работы: ${escapeHtml(x.title)}"><span class="disclosure-chevron" aria-hidden="true">▸</span><span class="uni-work-title">${escapeHtml(x.title)}</span></button><div class="row-sub">${x.due?`${overdue?'Просрочено: ':'Срок: '}${prettyDate(x.due,true)}`:'Без срока'} · ${PRIORITIES[x.priority]} · Шаги: ${count.done}/${count.total}</div></div></div>
       ${count.total?`<div class="progress uni-work-progress"><span style="width:${count.pct}%"></span></div>`:''}
       <div class="uni-work-extra" ${open?'':'hidden'}><div class="study-buttons uni-work-extra-controls"><button class="icon-btn" data-action="edit-academic" data-id="${escapeHtml(x.id)}" title="Редактировать работу" aria-label="Редактировать работу">✎ Редактировать</button><button class="icon-btn" data-action="delete-academic" data-id="${escapeHtml(x.id)}" title="Удалить работу" aria-label="Удалить работу">✕ Удалить</button></div><div class="uni-steps" aria-label="Подзадачи работы">${steps||'<p class="subnote">Пока нет шагов. Добавь первый ниже.</p>'}</div>
       <form class="uni-quick-form" data-uni-quick="${escapeHtml(x.id)}"><input name="step" required maxlength="300" placeholder="Новый шаг (например, чертёж №1)" aria-label="Новая подзадача для ${escapeHtml(x.title)}"><button class="btn btn-small" type="submit">+ Шаг</button></form>
@@ -348,9 +394,9 @@
     const state=window.MasterskayaUniversity.condition(sub,works,today());
     const closed=works.filter(x=>x.status==='passed').length;
     const filtered=works.filter(x=>academicFilter==='all'||(academicFilter==='doing'?['progress','ready','submitted','debt'].includes(x.status):academicFilter==='planned'?x.status==='planned':academicFilter==='passed'?x.status==='passed':academicFilter==='debt'?x.status==='debt'||academicOverdue(x):ACADEMIC_EXAMS.has(x.type)));
-    filtered.sort((a,b)=>(a.due||'9999').localeCompare(b.due||'9999'));
+    // Ручной порядок хранится в data.academic. Старый порядок v2.9.2 сохраняется при обновлении.
     const open=expandedUniversitySubjects.has(sub.id);
-    return `<section class="panel uni-subject ${open?'is-expanded':'is-compact'}" data-uni-subject-id="${escapeHtml(sub.id)}"><div class="uni-subject-head"><div class="uni-subject-info"><div class="eyebrow">ПРЕДМЕТ</div><button type="button" class="uni-subject-toggle disclosure-toggle" data-action="toggle-uni-subject" data-id="${escapeHtml(sub.id)}" aria-expanded="${open}" aria-label="${open?'Свернуть':'Развернуть'} сведения о предмете ${escapeHtml(sub.title)}"><span class="disclosure-chevron" aria-hidden="true">▸</span><span class="uni-subject-title">${escapeHtml(sub.title)}</span></button><div class="uni-subject-tags"><span class="pill ${state.key==='debt'||state.key==='overdue'?'overdue':state.key==='complete'?'done':''}">${state.label}</span><span class="tag">${closed} / ${works.length} работ закрыто</span></div><div class="uni-subject-detail" ${open?'':'hidden'}><p class="uni-subject-meta">${sub.teacher?'Преподаватель: '+escapeHtml(sub.teacher)+' · ':''}${escapeHtml(universitySessionLabel(sub.sessionId))}${sub.due?' · Общий срок: '+prettyDate(sub.due,true):''}</p>${sub.notes?`<p class="row-sub">${escapeHtml(sub.notes)}</p>`:''}</div></div><div class="study-buttons"><button class="btn btn-small btn-accent" data-action="add-academic" data-subject="${escapeHtml(sub.id)}">+ Работа</button><button class="icon-btn" data-action="edit-uni-subject" data-id="${escapeHtml(sub.id)}" title="Редактировать предмет" aria-label="Редактировать предмет">✎</button><button class="icon-btn" data-action="delete-uni-subject" data-id="${escapeHtml(sub.id)}" title="Удалить предмет" aria-label="Удалить предмет">✕</button></div></div>
+    return `<section class="panel uni-subject ${open?'is-expanded':'is-compact'}" data-uni-subject-id="${escapeHtml(sub.id)}" draggable="true"><div class="uni-subject-head"><div class="uni-subject-info"><div class="eyebrow">ПРЕДМЕТ</div><div class="uni-subject-order"><span class="uni-drag-handle" draggable="true" data-uni-subject-drag="${escapeHtml(sub.id)}" title="Перетащить предмет">⠿</span><button type="button" class="icon-btn" data-action="move-uni-subject" data-id="${escapeHtml(sub.id)}" data-direction="-1" aria-label="Поднять предмет выше">↑</button><button type="button" class="icon-btn" data-action="move-uni-subject" data-id="${escapeHtml(sub.id)}" data-direction="1" aria-label="Опустить предмет ниже">↓</button></div><button type="button" class="uni-subject-toggle disclosure-toggle" data-action="toggle-uni-subject" data-id="${escapeHtml(sub.id)}" aria-expanded="${open}" aria-label="${open?'Свернуть':'Развернуть'} сведения о предмете ${escapeHtml(sub.title)}"><span class="disclosure-chevron" aria-hidden="true">▸</span><span class="uni-subject-title">${escapeHtml(sub.title)}</span></button><div class="uni-subject-tags"><span class="pill ${state.key==='debt'||state.key==='overdue'?'overdue':state.key==='complete'?'done':''}">${state.label}</span><span class="tag">${closed} / ${works.length} работ закрыто</span></div><div class="uni-subject-detail" ${open?'':'hidden'}><p class="uni-subject-meta">${sub.teacher?'Преподаватель: '+escapeHtml(sub.teacher)+' · ':''}${escapeHtml(universitySessionLabel(sub.sessionId))}${sub.due?' · Общий срок: '+prettyDate(sub.due,true):''}</p>${sub.notes?`<p class="row-sub">${escapeHtml(sub.notes)}</p>`:''}</div></div><div class="study-buttons"><button class="btn btn-small btn-accent" data-action="add-academic" data-subject="${escapeHtml(sub.id)}">+ Работа</button><button class="icon-btn" data-action="edit-uni-subject" data-id="${escapeHtml(sub.id)}" title="Редактировать предмет" aria-label="Редактировать предмет">✎</button><button class="icon-btn" data-action="delete-uni-subject" data-id="${escapeHtml(sub.id)}" title="Удалить предмет" aria-label="Удалить предмет">✕</button></div></div>
       <div class="uni-work-list">${filtered.map(uniWorkCard).join('')||'<div class="empty">В выбранной категории работ нет. Нажми «+ Работа», чтобы добавить ЛР, КР или экзамен.</div>'}</div></section>`;
   }
   function renderUniversity(){
@@ -444,12 +490,12 @@
     const overdue=works.filter(x=>academicOverdue(x)&&x.status!=='debt').length;
     const upcoming=works.filter(x=>x.status!=='passed'&&x.due&&x.due>=today()&&x.due<=iso(shiftDate(new Date(),14))).length;
     const passed=works.filter(x=>x.status==='passed').length;
-    const subjects=[...data.universitySubjects].sort((a,b)=>String(a.title).localeCompare(String(b.title),'ru'));
+    const subjects=[...data.universitySubjects];
     const shown=subjects.filter(x=>(academicSubjectFilter==='all'||x.id===academicSubjectFilter)&&(academicSessionFilter==='all'||(academicSessionFilter==='none'?!x.sessionId:x.sessionId===academicSessionFilter)));
     return `<div class="study-summary"><div class="stat-card"><div class="stat-icon">!</div><div class="stat-value">${debts}</div><div class="stat-label">Учебных долгов</div></div><div class="stat-card"><div class="stat-icon">◷</div><div class="stat-value">${overdue}</div><div class="stat-label">Просрочено без долга</div></div><div class="stat-card"><div class="stat-icon">▤</div><div class="stat-value">${upcoming}</div><div class="stat-label">Сдач за 14 дней</div></div><div class="stat-card"><div class="stat-icon">✓</div><div class="stat-value">${passed} / ${total}</div><div class="stat-label">Закрыто работ</div></div></div>
       <div class="panel-title academic-list-header"><h2>Предметы и работы</h2><span>${subjects.length} предметов · ${total} работ</span></div>
       <div class="toolbar"><select id="academic-filter" aria-label="Фильтр учебных работ">${Object.entries({all:'Все работы',doing:'В работе',planned:'Запланировано',debt:'Долги и просроченное',exams:'Зачёты и экзамены',passed:'Закрытые'}).map(([v,label])=>`<option value="${v}" ${academicFilter===v?'selected':''}>${label}</option>`).join('')}</select><select id="academic-subject-filter" aria-label="Фильтр по предметам"><option value="all">Все предметы</option>${subjects.map(x=>`<option value="${escapeHtml(x.id)}" ${academicSubjectFilter===x.id?'selected':''}>${escapeHtml(x.title)}</option>`).join('')}</select><select id="academic-session-filter" aria-label="Фильтр по сессиям"><option value="all">Все сессии</option><option value="none" ${academicSessionFilter==='none'?'selected':''}>Без сессии</option>${data.universitySessions.map(x=>`<option value="${escapeHtml(x.id)}" ${academicSessionFilter===x.id?'selected':''}>${escapeHtml(x.title)}</option>`).join('')}</select><button class="btn btn-small btn-accent" data-action="add-uni-subject">+ Предмет</button><button class="btn btn-small" data-action="add-academic">+ Работа</button></div>
-      <p class="subnote">Структура: предмет → работа (ЛР, КР, зачёт) → небольшие шаги. Галочка шага означает выполнение шага, но <b>не закрывает автоматически работу</b>: её нужно отдельно сдать. «Долг» ставится вручную, «Просрочено без долга» рассчитывается по датам.</p>
+      <p class="subnote">Меняй порядок работ и предметов перетаскиванием за ⠿ на ПК или стрелками ↑ ↓ на телефоне. Порядок сохраняется на этом устройстве. Структура: предмет → работа (ЛР, КР, зачёт) → небольшие шаги. Галочка шага означает выполнение шага, но <b>не закрывает автоматически работу</b>: её нужно отдельно сдать. «Долг» ставится вручную, «Просрочено без долга» рассчитывается по датам.</p>
       <div class="uni-subject-list">${shown.map(sub=>uniSubjectCard(sub,works.filter(x=>x.subjectId===sub.id))).join('')||'<div class="panel empty">Предметов пока нет. Создай первый предмет и добавь к нему работы.</div>'}</div>`;
   }
   function renderUniversitySessions(){
@@ -458,21 +504,34 @@
       <div class="session-grid">${sessions.map(x=>`<div class="session-card"><div><h3>${escapeHtml(x.title)}</h3><p>${x.start?prettyDate(x.start,true):'Дата начала не задана'}${x.end?' — '+prettyDate(x.end,true):''}</p><span>${data.universitySubjects.filter(a=>a.sessionId===x.id).length} предметов · ${data.academic.filter(a=>a.sessionId===x.id).length} работ</span>${x.notes?`<p>${escapeHtml(x.notes)}</p>`:''}</div><div class="study-buttons"><button class="icon-btn" data-action="edit-session" data-id="${escapeHtml(x.id)}" aria-label="Редактировать сессию">✎</button><button class="icon-btn" data-action="delete-session" data-id="${escapeHtml(x.id)}" aria-label="Удалить сессию">✕</button></div></div>`).join('')||'<div class="row-sub">Добавь, например, зимнюю сессию и диапазон дат. Сдачи и экзамены появятся ниже отдельными карточками.</div>'}</div></div>
 <div class="panel study-hint"><p>Здесь хранятся периоды сессий. Создай предмет в разделе «Работы и долги» и выбери эту сессию. Затем добавляй внутрь предмета зачёты, лабораторные, курсовые и их шаги.</p><button class="btn btn-accent" data-action="add-uni-subject">+ Добавить предмет</button></div>`;
   }
-  function renderCalendar(){
-    const first=new Date(selectedMonth.getFullYear(),selectedMonth.getMonth(),1),start=shiftDate(first,-(first.getDay()+6)%7),ym=iso(first).slice(0,7);
-    const monthName=first.toLocaleDateString('ru-RU',{month:'long',year:'numeric'});
+  function calendarMarkers(from,to){
     const markers=[];
-    for(const x of data.posts)if(x.date)markers.push({date:x.date,text:`Публикация · ${x.channel} · ${x.title}`,short:`${CHANNEL_SHORT[x.channel]} · ${x.title}`,type:'post',done:x.status==='published'});
-    for(const x of data.tasks)if(x.due)markers.push({date:x.due,text:`Задача · ${x.title}`,short:`✓ ${x.title}`,type:'task',done:x.status==='done'});
-    for(const x of data.academic)if(x.due)markers.push({date:x.due,text:`ВУЗ · ${x.subject?x.subject+' · ':''}${x.title}`,short:`▥ ${x.title}`,type:'academic',done:x.status==='passed'});
-    for(const x of data.universitySessions){if(x.start)markers.push({date:x.start,text:`Начало сессии · ${x.title}`,short:`▥ ${x.title}`,type:'session',done:false});if(x.end)markers.push({date:x.end,text:`Конец сессии · ${x.title}`,short:`▥ ${x.title}`,type:'session',done:false});}
-    // Повторяющиеся пары показываем в календаре в пределах видимых 42 дней.
-    const last=iso(shiftDate(start,41));
-    for(const x of attendanceItems(iso(start),last))markers.push({date:x.date,text:`Пара · ${x.subject} · ${ATTENDANCE_STATUSES[x.record?.status]||'не отмечено'}`,short:`▣ ${x.subject}`,type:'attendance',done:x.record?.status==='attended'});
+    for(const x of data.posts)if(x.date>=from&&x.date<=to)markers.push({date:x.date,text:`Публикация · ${x.channel} · ${x.title}`,type:'post',done:x.status==='published'});
+    for(const x of data.tasks)if(x.due>=from&&x.due<=to)markers.push({date:x.due,text:`Задача · ${x.title}`,type:'task',done:x.status==='done'});
+    for(const x of data.academic)if(x.due>=from&&x.due<=to)markers.push({date:x.due,text:`ВУЗ · ${x.subject?x.subject+' · ':''}${x.title}`,type:'academic',done:x.status==='passed'});
+    for(const x of data.universitySessions){if(x.start>=from&&x.start<=to)markers.push({date:x.start,text:`Начало сессии · ${x.title}`,type:'session',done:false});if(x.end>=from&&x.end<=to)markers.push({date:x.end,text:`Конец сессии · ${x.title}`,type:'session',done:false});}
+    for(const x of attendanceItems(from,to))markers.push({date:x.date,text:`Пара · ${x.subject} · ${ATTENDANCE_STATUSES[x.record?.status]||'не отмечено'}`,type:'attendance',done:x.record?.status==='attended'});
+    return markers;
+  }
+  function renderCalendar(){
+    const first=new Date(selectedMonth.getFullYear(),selectedMonth.getMonth(),1),start=shiftDate(first,-(first.getDay()+6)%7);
+    const monthName=first.toLocaleDateString('ru-RU',{month:'long',year:'numeric'});
+    const markers=calendarMarkers(iso(start),iso(shiftDate(start,41)));
+    const byDay=new Map();for(const m of markers){if(!byDay.has(m.date))byDay.set(m.date,[]);byDay.get(m.date).push(m);}
+    const marks=m=>`<i class="calendar-dot ${m.type} ${m.done?'done':''}" aria-hidden="true"></i>`;
     let days='';
-    for(let i=0;i<42;i++){const d=shiftDate(start,i),ds=iso(d),month=d.getMonth()===first.getMonth();const items=markers.filter(x=>x.date===ds);days+=`<div class="calendar-day ${month?'':'muted'} ${ds===today()?'today':''}"><div class="calendar-date">${d.getDate()}</div>${items.slice(0,5).map(x=>`<span class="calendar-item ${x.type} ${x.done?'done':''}" title="${escapeHtml(x.text)}">${escapeHtml(x.short)}</span>`).join('')}${items.length>5?`<small style="color:#9ca6b7">ещё ${items.length-5}</small>`:''}</div>`;}
-    const agenda=markers.filter(x=>monthOf(x.date)===ym).sort((a,b)=>a.date.localeCompare(b.date));
-    return `${heading('РАСПИСАНИЕ','Календарь','Публикации, задачи, пары, дедлайны по вузу и границы сессий в одном месте.','<button class="btn btn-accent" data-action="add-academic">+ Сдача в вузе</button>')}<div class="panel"><div class="calendar-top"><h2>${escapeHtml(monthName)}</h2><div class="calendar-controls"><button class="btn btn-small" data-action="prev-month" aria-label="Предыдущий месяц">←</button><button class="btn btn-small" data-action="current-month">Сегодня</button><button class="btn btn-small" data-action="next-month" aria-label="Следующий месяц">→</button></div></div><div class="calendar-desktop"><div class="calendar-head">${['ПН','ВТ','СР','ЧТ','ПТ','СБ','ВС'].map(x=>`<div>${x}</div>`).join('')}</div><div class="calendar-grid">${days}</div></div><div class="calendar-mobile">${agenda.map(x=>`<div class="agenda-row"><span class="agenda-date">${prettyDate(x.date)}</span><span class="agenda-type ${x.type}">${x.type==='post'?'▤':x.type==='academic'||x.type==='session'?'▥':x.type==='attendance'?'▣':'☑'}</span><span class="agenda-text">${escapeHtml(x.text)}</span></div>`).join('')||'<div class="empty">На этот месяц ничего не запланировано.</div>'}</div><div class="subnote" style="margin-top:15px">Горчичный = публикации · Голубой = задачи · Фиолетовый = вуз и сессии · Бирюзовый = пары. На телефоне отображается список событий.</div></div>`;
+    for(let i=0;i<42;i++){
+      const d=shiftDate(start,i),ds=iso(d),inMonth=d.getMonth()===first.getMonth(),items=byDay.get(ds)||[];
+      days+=`<button type="button" class="calendar-day ${inMonth?'':'muted'} ${ds===today()?'today':''} ${ds===calendarSelectedDay?'is-selected':''}" data-action="calendar-select-day" data-day="${ds}" aria-pressed="${ds===calendarSelectedDay}" aria-label="${escapeHtml(prettyDate(ds,true))}: ${items.length} событий"><span class="calendar-date">${d.getDate()}</span><span class="calendar-dots">${items.slice(0,4).map(marks).join('')}${items.length>4?'<i class="calendar-dot more"></i>':''}</span><span class="calendar-day-count">${items.length?items.length+' событий':'&nbsp;'}</span></button>`;
+    }
+    const selected=byDay.get(calendarSelectedDay)||[];
+    const selectedLong=dateObj(calendarSelectedDay).toLocaleDateString('ru-RU',{weekday:'long',day:'numeric',month:'long',year:'numeric'});
+    return `${heading('РАСПИСАНИЕ','Календарь','Месяц целиком на телефоне и ПК. Выбери день, чтобы увидеть его события.','<button class="btn btn-accent" data-action="add-academic">+ Сдача в вузе</button>')}
+      <div class="panel calendar-panel"><div class="calendar-top"><h2>${escapeHtml(monthName)}</h2><div class="calendar-controls"><button class="btn btn-small" data-action="prev-month" aria-label="Предыдущий месяц">←</button><button class="btn btn-small" data-action="current-month">Сегодня</button><button class="btn btn-small" data-action="next-month" aria-label="Следующий месяц">→</button></div></div>
+      <div class="calendar-head">${['ПН','ВТ','СР','ЧТ','ПТ','СБ','ВС'].map(x=>`<div>${x}</div>`).join('')}</div><div class="calendar-grid">${days}</div>
+      <section class="calendar-day-detail" aria-live="polite"><div class="calendar-day-detail-head"><h3>${escapeHtml(selectedLong)}</h3><span>${selected.length} событий</span></div>
+      ${selected.length?selected.map(x=>`<div class="agenda-row ${x.done?'agenda-done':''}"><span class="agenda-type ${x.type}">${x.type==='post'?'▤':x.type==='academic'||x.type==='session'?'▥':x.type==='attendance'?'▣':'☑'}</span><span class="agenda-text">${escapeHtml(x.text)}</span></div>`).join(''):'<div class="empty">На этот день пока ничего не запланировано.</div>'}</section>
+      <p class="subnote">Цветные точки: публикации, задачи, ВУЗ и занятия. Нажми на число, чтобы увидеть названия событий. Дни без записей тоже отображаются.</p></div>`;
   }
   function projectTaskItem(t){
     const st=subtaskStats(t);
@@ -491,9 +550,29 @@
       <section class="panel project-section"><div class="panel-title"><h2>Запланировано</h2><span class="project-section-count">${planned.length}</span></div>${planned.length?planned.map(projectTaskItem).join(''):'<div class="empty">Запланированных задач нет.</div>'}</section>
       <section class="panel project-section"><div class="panel-title"><h2>Выполнено</h2><span class="project-section-count">${done.length}</span></div>${done.length?done.map(projectTaskItem).join(''):'<div class="empty">Выполненных задач пока нет.</div>'}</section></div>`;
   }
+  function sortedProjects(){
+    const rows=[...data.projects];
+    const score=p=>{const tasks=data.tasks.filter(t=>t.projectId===p.id);return {done:tasks.filter(t=>t.status==='done').length,active:tasks.filter(t=>t.status==='doing').length,progress:tasks.length?tasks.filter(t=>t.status==='done').length/tasks.length:0};};
+    if(projectSort==='name')rows.sort((a,b)=>a.name.localeCompare(b.name,'ru'));
+    if(projectSort==='done')rows.sort((a,b)=>score(b).done-score(a).done);
+    if(projectSort==='active')rows.sort((a,b)=>score(b).active-score(a).active);
+    if(projectSort==='progress')rows.sort((a,b)=>score(b).progress-score(a).progress||score(b).done-score(a).done);
+    return rows;
+  }
   function renderProjects(){
     if(selectedProjectId){const p=project(selectedProjectId);if(p)return renderProjectDetail(p);selectedProjectId=null;}
-    return `${heading('КАРТА ТВОРЧЕСТВА','Проекты','Открой проект, чтобы увидеть его текущие и завершённые задачи и перейти к любой из них.','<button class="btn btn-accent" data-action="add-project">+ Новый проект</button>')}<div class="project-grid">${data.projects.map(p=>{const tasks=data.tasks.filter(t=>t.projectId===p.id),posts=data.posts.filter(t=>t.projectId===p.id);const active=tasks.filter(t=>t.status==='doing').length,planned=tasks.filter(t=>t.status==='todo').length,done=tasks.filter(t=>t.status==='done').length;return `<div class="project-card"><div class="project-heading"><h2><span class="project-color" style="background:${p.color}"></span>${escapeHtml(p.name)}</h2><button class="icon-btn" data-action="edit-project" data-id="${escapeHtml(p.id)}" title="Переименовать">✎</button></div><p style="font-size:12px;color:var(--muted)">Задачи и публикации этого направления.</p><div class="project-counts"><span>${active} в работе</span><span>${planned} запланировано</span><span>${done} выполнено</span><span>${posts.length} публикаций</span></div><div class="actions-inline" style="margin-top:15px"><button class="btn btn-accent btn-small" data-action="open-project" data-id="${escapeHtml(p.id)}">Открыть проект ↗</button><button class="btn btn-small" data-action="add-task" data-project="${escapeHtml(p.id)}">+ Задача</button><button class="btn btn-small btn-danger" data-action="delete-project" data-id="${escapeHtml(p.id)}">Удалить</button></div></div>`;}).join('')}</div>`;
+    return `${heading('КАРТА ТВОРЧЕСТВА','Проекты','Компактная карта направлений. Открывай карточку только нужного проекта.','<button class="btn btn-accent" data-action="add-project">+ Новый проект</button>')}
+      <div class="projects-toolbar"><label for="project-sort">Сортировка</label><select id="project-sort" aria-label="Сортировка проектов">${Object.entries(PROJECT_SORTS).map(([key,title])=>`<option value="${key}" ${projectSort===key?'selected':''}>${title}</option>`).join('')}</select><span>${data.projects.length} проектов</span></div>
+      <div class="project-grid project-tiles">${sortedProjects().map(p=>{
+        const tasks=data.tasks.filter(t=>t.projectId===p.id),posts=data.posts.filter(t=>t.projectId===p.id);
+        const active=tasks.filter(t=>t.status==='doing').length,planned=tasks.filter(t=>t.status==='todo').length,done=tasks.filter(t=>t.status==='done').length;
+        const percent=tasks.length?Math.round(done/tasks.length*100):0;
+        return `<article class="project-card project-tile" style="--project-tile-color:${escapeHtml(p.color)}"><div class="project-tile-head"><i class="project-tile-swatch" aria-hidden="true"></i><h2>${escapeHtml(p.name)}</h2></div>
+          <div class="project-tile-progress"><span>${done} из ${tasks.length} задач</span><b>${percent}%</b></div><div class="progress"><span style="width:${percent}%;background:${escapeHtml(p.color)}"></span></div>
+          <div class="project-tile-metrics"><span><b>${active}</b> в работе</span><span><b>${planned}</b> в планах</span><span><b>${done}</b> готово</span></div>
+          <div class="project-tile-footer"><button class="btn btn-small project-tile-open" data-action="open-project" data-id="${escapeHtml(p.id)}">Открыть ↗</button><button class="icon-btn" data-action="edit-project" data-id="${escapeHtml(p.id)}" title="Редактировать" aria-label="Редактировать ${escapeHtml(p.name)}">✎</button><button class="icon-btn" data-action="delete-project" data-id="${escapeHtml(p.id)}" title="Удалить" aria-label="Удалить ${escapeHtml(p.name)}">✕</button></div>
+          <span class="project-tile-posts">Публикаций: ${posts.length}</span></article>`;
+      }).join('')||'<div class="panel empty">Пока нет проектов. Создай первый.</div>'}</div>`;
   }
   function renderSettings(){return `${heading('ЛИЧНЫЕ НАСТРОЙКИ','Цели и резервная копия','Цели нужны как ориентир, а не как повод ругать себя за пропущенную неделю.')}<div class="settings-grid"><div class="panel"><div class="panel-title"><h2>Месячные цели по публикациям</h2></div><form id="goals-form">${CHANNELS.map(c=>`<label class="field-row"><span>${escapeHtml(c)}</span><input type="number" name="${escapeHtml(c)}" min="0" max="100" step="1" value="${n(data.goals[c])}" aria-label="Цель для ${escapeHtml(c)}"></label>`).join('')}<button type="submit" class="btn btn-accent" style="margin-top:19px">Сохранить цели</button></form></div><div class="panel"><div class="panel-title"><h2>Данные и перенос</h2></div><p style="color:var(--muted);font-size:13px">Все задачи, публикации, посещения и учебные записи сохраняются в браузере этого устройства. На другой компьютер они сами не переносятся.</p><div class="warning"><b>Обязательно сделай резервную копию.</b><br>Очистка данных браузера или работа в другом профиле может удалить записи.</div><div class="actions-inline" style="margin-top:18px"><button class="btn btn-accent" data-action="export">↓ Скачать JSON-копию</button><button class="btn" data-action="import">↑ Восстановить из JSON</button></div><p class="subnote">Импорт заменяет текущие записи, поэтому перед ним полезно экспортировать копию. Секреты и пароли в планере хранить не нужно.</p></div></div>${data.study.length?`<div class="panel"><div class="panel-title"><h2>Архив самообучения из v2.0</h2></div><p class="subnote">Сохранено ${data.study.length} старых тем. Они остались в резервной копии JSON и не смешиваются с учебными дисциплинами университета.</p>${data.study.slice(0,30).map(x=>`<div class="list-row"><div class="row-title">${escapeHtml(x.title)}</div></div>`).join('')}</div>`:''}<div class="install-card"><h2>Установка на iPhone и iPad</h2><p>Открой сайт в <strong>Safari</strong>. Нажми <strong>«Поделиться»</strong> (квадрат со стрелкой вверх), затем <strong>«На экран Домой»</strong> и <strong>«Добавить»</strong>. Если пункт не виден, прокрути меню «Поделиться» ниже.</p><ol><li>Запускай приложение с появившейся иконки «МАСТЕРСКАЯ».</li><li>После первого открытия с интернетом интерфейс сможет загружаться без сети. Данные сохраняются локально.</li><li>Если используешь планер на компьютере, перенеси задачи через «Скачать JSON-копию» и «Восстановить из JSON».</li></ol><p class="subnote">Важно: данные Safari и версии с экрана «Домой» могут храниться раздельно. Экспортируй копию до перехода. iOS может удалять локальные данные при очистке хранилища; автоматической синхронизации и уведомлений пока нет.</p></div><div class="panel"><div class="panel-title"><h2>Как опубликовать этот сайт на GitHub Pages</h2></div><p style="color:var(--muted);font-size:13px">Загрузи index.html, style.css и app.js в публичный репозиторий, затем открой Settings → Pages и выбери Deploy from a branch → main → / (root). GitHub опубликует сайт по адресу вида username.github.io/repository. Публикуется только код сайта, не твои личные записи из браузера.</p></div>`;}
   function optionList(obj,value){return Object.entries(obj).map(([k,v])=>`<option value="${escapeHtml(k)}" ${value===k?'selected':''}>${escapeHtml(v)}</option>`).join('');}
@@ -702,6 +781,13 @@
       case 'delete-subtask':{const parent=data.tasks.find(t=>t.id===p);const sub=parent?.subtasks.find(x=>x.id===id);if(sub&&confirm(`Удалить подзадачу «${sub.title}»?`)){parent.subtasks=parent.subtasks.filter(x=>x.id!==id);save();render();toast('Шаг удалён');}break;}
       case 'add-habit':openEditor('habit');break;case 'edit-habit':openEditor('habit',id);break;case 'delete-habit':remove('habits',id);break;case 'tap-habit':recordHabit(id);break;
       case 'add-work':openEditor('work');break;case 'edit-work':openEditor('work',id);break;case 'delete-work':remove('workSessions',id);break;
+      case 'move-uni-work':moveUniversityWork(id,Number(btn.dataset.direction));break;
+      case 'move-uni-subject':moveUniversitySubject(id,Number(btn.dataset.direction));break;
+      case 'calendar-select-day':{const day=btn.dataset.day;if(hasDate(day)){calendarSelectedDay=day;render();}break;}
+      case 'activity-select-day':if(hasDate(btn.dataset.day)){activitySelectedDay=btn.dataset.day;render();}break;
+      case 'activity-prev-day':activitySelectedDay=iso(shiftDate(dateObj(activitySelectedDay),-1));render();break;
+      case 'activity-next-day':if(activitySelectedDay<today()){activitySelectedDay=iso(shiftDate(dateObj(activitySelectedDay),1));render();}break;
+      case 'activity-today':activitySelectedDay=today();render();break;
       case 'activity-period':activityDays=[7,30,90].includes(Number(btn.dataset.days))?Number(btn.dataset.days):30;render();break;
       case 'open-project':selectedProjectId=id;page='projects';window.scrollTo({top:0,behavior:'instant'});render();break;
       case 'back-projects':selectedProjectId=null;render();break;
@@ -711,9 +797,9 @@
       case 'delete-task':remove('tasks',id);break;case 'delete-post':remove('posts',id);break;case 'delete-project':remove('projects',id);break;
       case 'copy-post':{const post=data.posts.find(p=>p.id===id);if(post){data.posts.push({...clone(post),id:safeId(),title:post.title+' (копия)',status:'idea',link:''});save();render();toast('Создана копия: можно выбрать другую площадку');}break;}
       case 'close-dialog':editor.close();break;
-      case 'prev-month':selectedMonth=new Date(selectedMonth.getFullYear(),selectedMonth.getMonth()-1,1);render();break;
-      case 'next-month':selectedMonth=new Date(selectedMonth.getFullYear(),selectedMonth.getMonth()+1,1);render();break;
-      case 'current-month':selectedMonth=new Date();selectedMonth.setDate(1);render();break;
+      case 'prev-month':selectedMonth=new Date(selectedMonth.getFullYear(),selectedMonth.getMonth()-1,1);calendarSelectedDay=iso(selectedMonth);render();break;
+      case 'next-month':selectedMonth=new Date(selectedMonth.getFullYear(),selectedMonth.getMonth()+1,1);calendarSelectedDay=iso(selectedMonth);render();break;
+      case 'current-month':selectedMonth=new Date();selectedMonth.setDate(1);calendarSelectedDay=today();render();break;
       case 'export':exportData();break;case 'import':document.querySelector('#restore-file').click();break;
       case 'recover-storage':restoreLocalBackup();break;case 'export-broken':exportBrokenData();break;
     }
@@ -725,6 +811,8 @@
     if(e.target.matches('[data-uni-step]')){const work=data.academic.find(x=>x.id===e.target.dataset.work),step=work?.subtasks.find(x=>x.id===e.target.dataset.uniStep);if(step){const prev=step.done;step.done=e.target.checked;transition('subtask',`ВУЗ · ${work.subject} · ${work.title} · ${step.title}`,prev,step.done,{color:'#96accb'});save();render();}}
     if(e.target.matches('[data-uni-work-check]')){const work=data.academic.find(x=>x.id===e.target.dataset.uniWorkCheck);if(work){const was=work.status==='passed';work.status=e.target.checked?'passed':'progress';transition('academic',work.title,was,work.status==='passed');save();render();}}
     if(e.target.matches('[data-post-stage]')){const p=data.posts.find(x=>x.id===e.target.dataset.postStage);if(p&&STAGES[e.target.value]){const before=p.status==='published';p.status=e.target.value;transition('post',p.title,before,p.status==='published',p);save();render();toast('Этап обновлён');}}
+    if(e.target.matches('#project-sort')){if(PROJECT_SORTS[e.target.value]){projectSort=e.target.value;data.projectSort=projectSort;save();render();}}
+    if(e.target.matches('#activity-day-picker')){if(hasDate(e.target.value)&&e.target.value<=today()){activitySelectedDay=e.target.value;render();}}
     if(e.target.matches('#task-sort')){if(TASK_SORTS[e.target.value]){data.taskSort=e.target.value;save();render();}}
     if(e.target.matches('#task-filter')){taskFilter=e.target.value;render();}
     if(e.target.matches('#uni-week-anchor')){data.universityWeekAnchor=hasDate(e.target.value)?e.target.value:'';save();render();toast('Первая нечётная неделя сохранена');}
@@ -745,19 +833,36 @@
   });
   document.addEventListener('input',e=>{if(e.target.matches('#task-search')){query=e.target.value;const pos=e.target.selectionStart;render();const input=document.querySelector('#task-search');input.focus();input.setSelectionRange(pos,pos);}});
   app.addEventListener('dragstart',e=>{
+    const uniWork=e.target.closest('[data-uni-work-drag]');
+    if(uniWork){draggedUniWorkId=uniWork.dataset.uniWorkDrag;e.dataTransfer.effectAllowed='move';e.dataTransfer.setData('text/plain',draggedUniWorkId);return;}
+    const uniSubject=e.target.closest('[data-uni-subject-drag]');
+    if(uniSubject){draggedUniSubjectId=uniSubject.dataset.uniSubjectDrag;e.dataTransfer.effectAllowed='move';e.dataTransfer.setData('text/plain',draggedUniSubjectId);return;}
+    if(e.target.closest('[data-uni-work-id],[data-uni-subject-id]')){e.preventDefault();return;}
     const handle=e.target.closest('[data-task-drag]');if(!handle||!canReorder())return;
     draggedTaskId=handle.dataset.taskDrag; e.dataTransfer.effectAllowed='move';e.dataTransfer.setData('text/plain',draggedTaskId);
     handle.closest('.task-card')?.classList.add('task-dragging');
   });
   app.addEventListener('dragover',e=>{
+    const targetWork=e.target.closest('[data-uni-work-id]'),targetSubject=e.target.closest('[data-uni-subject-id]');
+    if(draggedUniWorkId&&targetWork&&targetWork.dataset.uniWorkId!==draggedUniWorkId){
+      const a=data.academic.find(x=>x.id===draggedUniWorkId),b=data.academic.find(x=>x.id===targetWork.dataset.uniWorkId);
+      if(a?.subjectId===b?.subjectId){e.preventDefault();e.dataTransfer.dropEffect='move';targetWork.classList.add('uni-drop-target');}return;
+    }
+    if(draggedUniSubjectId&&targetSubject&&targetSubject.dataset.uniSubjectId!==draggedUniSubjectId){e.preventDefault();e.dataTransfer.dropEffect='move';targetSubject.classList.add('uni-drop-target');return;}
     if(!draggedTaskId||!canReorder())return;const card=e.target.closest('[data-task-id]');if(!card||card.dataset.taskId===draggedTaskId)return;
     e.preventDefault();e.dataTransfer.dropEffect='move';app.querySelectorAll('.task-drop-target').forEach(el=>el.classList.remove('task-drop-target'));card.classList.add('task-drop-target');
   });
   app.addEventListener('drop',e=>{
+    if(draggedUniWorkId){const id=e.target.closest('[data-uni-work-id]')?.dataset.uniWorkId,source=draggedUniWorkId;draggedUniWorkId=null;app.querySelectorAll('.uni-drop-target').forEach(x=>x.classList.remove('uni-drop-target'));if(id){e.preventDefault();dropUniversityWork(source,id);}return;}
+    if(draggedUniSubjectId){const id=e.target.closest('[data-uni-subject-id]')?.dataset.uniSubjectId,source=draggedUniSubjectId;draggedUniSubjectId=null;app.querySelectorAll('.uni-drop-target').forEach(x=>x.classList.remove('uni-drop-target'));if(id&&placeBefore(data.universitySubjects,source,id)){e.preventDefault();save();render();}return;}
     const card=e.target.closest('[data-task-id]');if(!card||!draggedTaskId)return;e.preventDefault();const dragged=draggedTaskId;draggedTaskId=null;
     app.querySelectorAll('.task-drop-target,.task-dragging').forEach(el=>el.classList.remove('task-drop-target','task-dragging'));const box=card.getBoundingClientRect();moveTaskBefore(dragged,card.dataset.taskId,e.clientY>box.top+box.height/2);
   });
-  app.addEventListener('dragend',()=>{draggedTaskId=null;app.querySelectorAll('.task-drop-target,.task-dragging').forEach(el=>el.classList.remove('task-drop-target','task-dragging'));});
+  app.addEventListener('dragend',()=>{draggedUniWorkId=null;draggedUniSubjectId=null;app.querySelectorAll('.uni-drop-target').forEach(x=>x.classList.remove('uni-drop-target'));draggedTaskId=null;app.querySelectorAll('.task-drop-target,.task-dragging').forEach(el=>el.classList.remove('task-drop-target','task-dragging'));});
+  app.addEventListener('keydown',e=>{
+    const bar=e.target.closest('.activity-chart-bar[data-day]');
+    if(bar&&(e.key==='Enter'||e.key===' ')){e.preventDefault();activitySelectedDay=bar.dataset.day;render();}
+  });
   app.addEventListener('submit',e=>{
     const box=e.target.closest('[data-uni-quick]');if(!box)return;e.preventDefault();
     const work=data.academic.find(x=>x.id===box.dataset.uniQuick),value=box.elements.step.value.trim();
