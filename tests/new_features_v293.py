@@ -12,9 +12,9 @@ works=[dict(id=f'w{i}',title=f'Работа №{i} — Курсовой расч
 tasks=[]
 for i in range(22):tasks.append(dict(id=f't{i}',title=f'Задача {i}',projectId=f'p{i%8}',status='done' if i%3==0 else 'doing',due=TEST_DAY if i%5==0 else '',subtasks=[]))
 seed=dict(version=9,projects=projects,universitySubjects=subjects,academic=works,tasks=tasks,posts=[dict(id='post1',title='Публикация',channel='Telegram',date=TEST_DAY)],activityLog=[dict(id='a1',date=TEST_DAY,delta=1,kind='task',title='Завершение задачи',projectId='p1'),dict(id='a2',date=TEST_DAY,delta=1,kind='academic',title='Лабораторная'),dict(id='a3',date=TEST_DAY,delta=-1,kind='task',title='Вернул в работу')],workSessions=[dict(id='ws1',date=TEST_DAY,minutes=85,area='3D / Арт',projectId='p1',note='Тестовая работа')])
-html=(ROOT/'index.html').read_text().replace('<link rel="stylesheet" href="style.css?v=293">',f'<style>{(ROOT/"style.css").read_text()}</style>')
+html=(ROOT/'index.html').read_text().replace('<link rel="stylesheet" href="style.css?v=300">',f'<style>{(ROOT/"style.css").read_text()}</style>')
 for filename in ('storage.js','analytics.js','habits.js','university.js','app.js','pwa.js'):
- html=html.replace(f'<script src="{filename}?v=293" defer></script>','')
+ html=html.replace(f'<script src="{filename}?v=300" defer></script>','')
 html=html.replace('</body>','\n'.join(f'<script>{(ROOT/filename).read_text()}</script>' for filename in ('storage.js','analytics.js','habits.js','university.js','app.js'))+'</body>')
 failures=[];checks=0
 with sync_playwright() as p:
@@ -58,7 +58,8 @@ with sync_playwright() as p:
   check('Публикация' in pg.locator('.calendar-day-detail').inner_text(),'Calendar day detail empty')
   pg.locator('[data-nav="activity"]').first.click()
   pg.locator('#activity-day-picker').fill(TEST_DAY)
-  check('Завершение задачи' in pg.locator('.activity-day-panel').inner_text(),'Activity details lack action')
+  pg.locator('.activity-day-panel .activity-group summary').first.click()
+  check('Завершение задачи' in pg.locator('.activity-day-panel').inner_text(),'Activity details lack action after expansion')
   check('1 ч 25 мин' in pg.locator('.activity-day-panel').inner_text(),'Activity details lack recorded time')
   check(pg.locator('.activity-chart-scroll').count()==2,'Chart scroll wrappers missing')
   check(pg.locator('.activity-svg .activity-chart-bar').count()>=30,'Chart bar click targets missing')

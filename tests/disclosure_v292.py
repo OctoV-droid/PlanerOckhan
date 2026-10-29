@@ -4,9 +4,9 @@ from pathlib import Path
 from playwright.sync_api import sync_playwright
 ROOT=Path(__file__).resolve().parents[1]
 html=(ROOT/'index.html').read_text()
-html=html.replace('<link rel="stylesheet" href="style.css?v=293">', '<style>'+ (ROOT/'style.css').read_text()+'</style>')
+html=html.replace('<link rel="stylesheet" href="style.css?v=300">', '<style>'+ (ROOT/'style.css').read_text()+'</style>')
 for filename in ('storage.js','analytics.js','habits.js','university.js','app.js','pwa.js'):
-    html=html.replace(f'<script src="{filename}?v=293" defer></script>','')
+    html=html.replace(f'<script src="{filename}?v=300" defer></script>','')
 html=html.replace('</body>','\n'.join(f'<script>{(ROOT/name).read_text()}</script>' for name in ('storage.js','analytics.js','habits.js','university.js','app.js'))+'</body>')
 seed={
     'version':9,

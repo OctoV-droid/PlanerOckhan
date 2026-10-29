@@ -1,4 +1,4 @@
-/* МАСТЕРСКАЯ v2.9.3 — проекты с задачами, ручной порядок, подзадачи и активность.
+/* МАСТЕРСКАЯ v3.0 — проекты с задачами, ручной порядок, подзадачи и активность.
    Данные хранятся ТОЛЬКО в localStorage этого браузера.
    Ни токенов GitHub, ни секретов, ни запросов к внешним сервисам. */
 (() => {
@@ -24,7 +24,7 @@
   const ATTENDANCE_STATUSES = {attended:'Посетил',missed:'Пропустил',excused:'Уважительная причина',cancelled:'Отменена'};
   const COLORS = ['#b8a2d1','#d5bd88','#91b9b0','#96accb','#ce998c','#c0c5a1'];
   const defaultData = () => ({
-    version:10,
+    version:11,
     projectSort:'manual',
     taskSort:'manual',
     projects:[
@@ -47,6 +47,7 @@
   let lastSavedDay = today();
   let page = 'overview';
   let taskFilter = 'doing';
+  let showAllFinished = false;
   let selectedProjectId = null;
   let draggedTaskId = null;
   let draggedUniWorkId = null;
@@ -101,8 +102,29 @@
     return 0; // При ручной сортировке порядок равен порядку в массиве tasks.
   }
   function orderedTasks(list){return data.taskSort==='manual'?[...list]:[...list].sort(taskSorter);}
-  function visibleTasks(){let list=data.tasks.filter(t=>taskFilter==='all'||t.status===taskFilter);if(query)list=list.filter(t=>[t.title,t.notes,projectLabel(t.projectId)].join(' ').toLowerCase().includes(query.toLowerCase()));return orderedTasks(list);}
-  function canReorder(){return page==='tasks'&&data.taskSort==='manual'&&!query;}
+  function archived(t){return Boolean(t.archivedAt);}
+  function archivedCount(){return data.tasks.filter(archived).length;}
+  function visibleTasks(){
+    let list=data.tasks.filter(t=>taskFilter==='archive'?archived(t):!archived(t)&&((taskFilter==='all'&&t.status!=='done')||t.status===taskFilter));
+    if(query)list=list.filter(t=>[t.title,t.notes,projectLabel(t.projectId)].join(' ').toLowerCase().includes(query.toLowerCase()));
+    return orderedTasks(list);
+  }
+  function archiveTasks(ids,restore=false){
+    const selected=data.tasks.filter(t=>ids.includes(t.id)&&(restore?archived(t):t.status==='done'&&!archived(t)));
+    if(!selected.length){toast('Нет подходящих задач');return;}
+    const old=selected.map(t=>[t,t.archivedAt]);
+    for(const t of selected)t.archivedAt=restore?'':today();
+    if(!save()){
+      for(const [task,value] of old)task.archivedAt=value;
+      render();return;
+    }
+    render();toast(restore?'Задача восстановлена из архива':`В архиве: ${selected.length} задач. Прогресс сохранён`);
+  }
+  function archivePreview(task){
+    const st=subtaskStats(task),open=expandedTaskSteps.has(task.id);
+    return `<div class="archive-entry" data-task-id="${escapeHtml(task.id)}"><div class="archive-entry-main"><strong>${escapeHtml(task.title)}</strong><span>${escapeHtml(projectLabel(task.projectId))} · ${st.total?`${st.done}/${st.total} шагов · `:''}архив ${prettyDate(task.archivedAt,true)}</span></div><div class="archive-entry-actions"><button class="btn btn-small" data-action="restore-task" data-id="${escapeHtml(task.id)}">↶ Вернуть</button><button class="icon-btn" data-action="toggle-archive-preview" data-id="${escapeHtml(task.id)}" aria-expanded="${open}" aria-label="${open?'Скрыть':'Показать'} шаги архивной задачи">${open?'▴':'▾'}</button></div>${open?`<div class="archive-entry-detail">${task.notes?`<p>${escapeHtml(task.notes)}</p>`:''}${(task.subtasks||[]).map(step=>`<div>${step.done?'✓':'○'} ${escapeHtml(step.title)}</div>`).join('')||'<span>Нет подзадач</span>'}</div>`:''}</div>`;
+  }
+  function canReorder(){return page==='tasks'&&taskFilter!=='archive'&&data.taskSort==='manual'&&!query;}
   function moveTaskBefore(sourceId,targetId,placeAfter=false){
     if(!canReorder()||sourceId===targetId)return false;
     const from=data.tasks.findIndex(t=>t.id===sourceId),to=data.tasks.findIndex(t=>t.id===targetId);
@@ -118,7 +140,7 @@
     const btn=app.querySelector(`[data-task-move="${id}"][data-direction="${direction}"]`);btn?.focus();
   }
   function goToTask(id){
-    if(!data.tasks.some(t=>t.id===id))return;page='tasks';selectedProjectId=null;taskFilter='all';query='';render();
+    if(!data.tasks.some(t=>t.id===id))return;page='tasks';selectedProjectId=null;taskFilter=data.tasks.find(t=>t.id===id)?.archivedAt?'archive':data.tasks.find(t=>t.id===id)?.status==='done'?'done':'all';query='';render();
     const card=[...app.querySelectorAll('[data-task-id]')].find(el=>el.dataset.taskId===id);
     if(card){card.classList.add('task-focused');card.scrollIntoView({block:'center',behavior:'smooth'});}
   }
@@ -137,7 +159,7 @@
     if(Array.isArray(raw.projects))d.projects=raw.projects.slice(0,200).filter(p=>p && typeof p.name==='string').map(p=>({id:String(p.id||safeId()).slice(0,90),name:p.name.slice(0,90),color:COLORS.includes(p.color)||/^#[0-9a-fA-F]{6}$/.test(p.color||'')?p.color:'#b8a2d1'}));
     d.taskSort=TASK_SORTS[raw.taskSort]?raw.taskSort:'manual';
     d.projectSort=PROJECT_SORTS[raw.projectSort]?raw.projectSort:'manual';
-    if(Array.isArray(raw.tasks))d.tasks=raw.tasks.slice(0,5000).filter(t=>t&&typeof t.title==='string').map(t=>({id:String(t.id||safeId()).slice(0,90),title:t.title.slice(0,300),projectId:String(t.projectId||''),due:hasDate(t.due)?t.due:'',priority:PRIORITIES[t.priority]?t.priority:'normal',status:TASK_STATES[t.status]?t.status:'todo',lastOpenStatus:['todo','doing'].includes(t.lastOpenStatus)?t.lastOpenStatus:'doing',color:window.MasterskayaAnalytics.color(t.color,''),notes:String(t.notes||'').slice(0,10000),subtasks:Array.isArray(t.subtasks)?t.subtasks.slice(0,250).filter(st=>st&&typeof st.title==='string').map(st=>({id:String(st.id||safeId()).slice(0,90),title:st.title.slice(0,300),done:st.done===true})):[]}));
+    if(Array.isArray(raw.tasks))d.tasks=raw.tasks.slice(0,5000).filter(t=>t&&typeof t.title==='string').map(t=>({id:String(t.id||safeId()).slice(0,90),title:t.title.slice(0,300),projectId:String(t.projectId||''),due:hasDate(t.due)?t.due:'',priority:PRIORITIES[t.priority]?t.priority:'normal',status:TASK_STATES[t.status]?t.status:'todo',lastOpenStatus:['todo','doing'].includes(t.lastOpenStatus)?t.lastOpenStatus:'doing',color:window.MasterskayaAnalytics.color(t.color,''),notes:String(t.notes||'').slice(0,10000),archivedAt:t.status==='done'&&hasDate(t.archivedAt)?t.archivedAt:'',subtasks:Array.isArray(t.subtasks)?t.subtasks.slice(0,250).filter(st=>st&&typeof st.title==='string').map(st=>({id:String(st.id||safeId()).slice(0,90),title:st.title.slice(0,300),done:st.done===true})):[]}));
     if(Array.isArray(raw.habits))d.habits=raw.habits.slice(0,250).filter(h=>h&&typeof h.title==='string').map(h=>({
       id:String(h.id||safeId()).slice(0,90),title:h.title.slice(0,100),icon:String(h.icon||'✳').slice(0,10),color:window.MasterskayaAnalytics.color(h.color,'#91b9b0'),createdAt:hasDate(h.createdAt)?h.createdAt:today()
     }));
@@ -252,6 +274,16 @@
     const daySessions=data.workSessions.filter(x=>x.date===activitySelectedDay);
     const dayDone=dayEvents.filter(x=>x.delta>0).length,dayReturn=dayEvents.filter(x=>x.delta<0).length;
     const dayTime=daySessions.reduce((total,x)=>total+x.minutes,0);
+    const activityGroups=new Map();
+    for(const event of dayEvents){
+      const label=event.kind==='academic'||(event.kind==='subtask'&&event.title.startsWith('ВУЗ ·'))?'Учёба в вузе':event.projectId?projectLabel(event.projectId):event.kind==='subtask'?'Подзадачи без проекта':event.kind==='habit'?'Привычки':'Другое';
+      if(!activityGroups.has(label))activityGroups.set(label,[]);
+      activityGroups.get(label).push(event);
+    }
+    const groupedEvents=[...activityGroups.entries()].sort((a,b)=>b[1].length-a[1].length).map(([label,events])=>`<details class="activity-group v3-fold"><summary class="v3-fold-summary"><span class="v3-fold-caret">▸</span><strong>${escapeHtml(label)}</strong><span class="project-section-count">${events.filter(e=>e.delta>0).length} ✓</span><small>${events.length} событий</small></summary><div class="v3-fold-body">${events.slice(0,300).map(x=>`<div class="activity-day-entry"><i class="color-dot" style="background:${escapeHtml(window.MasterskayaAnalytics.color(x.color,project(x.projectId)?.color||'#96accb'))}"></i><span>${x.delta>0?'✓ ':'↶ '}${escapeHtml(x.title)}</span><b>${x.delta>0?'+1':'−1'}</b></div>`).join('')}${events.length>300?`<p class="subnote">Показаны первые 300 событий из ${events.length}. Все события сохранены в данных.</p>`:''}</div></details>`).join('');
+    const sessionGroups=new Map();
+    for(const session of daySessions){const label=session.projectId?projectLabel(session.projectId):session.area;if(!sessionGroups.has(label))sessionGroups.set(label,[]);sessionGroups.get(label).push(session);}
+    const groupedSessions=[...sessionGroups.entries()].map(([label,entries])=>`<details class="activity-group v3-fold"><summary class="v3-fold-summary"><span class="v3-fold-caret">▸</span><strong>${escapeHtml(label)}</strong><span class="project-section-count">${hoursString(entries.reduce((sum,x)=>sum+x.minutes,0))}</span><small>${entries.length} записей</small></summary><div class="v3-fold-body">${entries.map(x=>`<div class="activity-day-entry"><span>${escapeHtml(x.note||x.area)}</span><b>${hoursString(x.minutes)}</b></div>`).join('')}</div></details>`).join('');
     return `${heading('ЛИЧНАЯ АНАЛИТИКА','Активность','Следи за результатами и затраченным временем без штрафов за отдых. Дни без записей не считаются регрессом.','<button class="btn btn-accent" data-action="add-work">+ Записать рабочую сессию</button>')}
     <div class="activity-period" role="group" aria-label="Период графика">${[7,30,90].map(d=>`<button class="${activityDays===d?'selected':''}" data-action="activity-period" data-days="${d}" aria-pressed="${activityDays===d}">${d} дней</button>`).join('')}</div>
     <div class="activity-summary">
@@ -262,7 +294,7 @@
     </div>
     <section class="panel activity-day-panel"><div class="activity-day-head"><div><div class="eyebrow">АКТИВНОСТЬ ПО ДНЯМ</div><h2>${escapeHtml(dateObj(activitySelectedDay).toLocaleDateString('ru-RU',{weekday:'long',day:'numeric',month:'long',year:'numeric'}))}</h2></div><div class="activity-day-controls"><button class="btn btn-small" data-action="activity-prev-day" title="Предыдущий день" aria-label="Предыдущий день">←</button><input id="activity-day-picker" type="date" value="${activitySelectedDay}" max="${today()}" aria-label="Выбрать день активности"><button class="btn btn-small" data-action="activity-next-day" title="Следующий день" ${activitySelectedDay>=today()?'disabled':''} aria-label="Следующий день">→</button><button class="btn btn-small" data-action="activity-today">Сегодня</button></div></div>
       <div class="activity-day-stats"><div><strong>${dayDone}</strong><span>Завершено действий</span></div><div><strong>${dayReturn}</strong><span>Повторно открыто</span></div><div><strong>${hoursString(dayTime)}</strong><span>Записано времени</span></div></div>
-      <div class="activity-day-entries"><div><h3>Действия</h3>${dayEvents.length?dayEvents.map(x=>`<div class="activity-day-entry"><i class="color-dot" style="background:${escapeHtml(window.MasterskayaAnalytics.color(x.color,project(x.projectId)?.color||'#96accb'))}"></i><span>${x.delta>0?'✓ ':'↶ '}${escapeHtml(x.title)}</span><b>${x.delta>0?'+1':'−1'}</b></div>`).join(''):'<p class="subnote">В этот день завершённых или повторно открытых задач нет.</p>'}</div><div><h3>Рабочие сессии</h3>${daySessions.length?daySessions.map(x=>`<div class="activity-day-entry"><span>${escapeHtml(x.projectId?projectLabel(x.projectId):x.area)}${x.note?' · '+escapeHtml(x.note):''}</span><b>${hoursString(x.minutes)}</b></div>`).join(''):'<p class="subnote">Рабочее время за этот день не записано.</p>'}</div></div></section>
+      <div class="activity-day-entries"><div><h3>По направлениям · ${dayEvents.length} событий</h3>${groupedEvents||'<p class="subnote">В этот день действий нет.</p>'}</div><div><h3>Рабочие сессии · ${daySessions.length}</h3>${groupedSessions||'<p class="subnote">Рабочее время не записано.</p>'}</div></div></section>
     <section class="panel activity-panel"><div class="panel-title"><h2>Прогресс и возвращённые в работу действия</h2></div>
     ${categoryLegend(byTask.categories)}<p class="subnote">Числа слева показывают количество действий. Нажми на столбец или выбери дату выше.</p><div class="activity-chart-scroll" tabindex="0" aria-label="Прокручиваемый график действий">${stackedPlot(byTask,'actions')}</div>${categoryTotals(byTask,'actions')}<p class="subnote">Столбцы показывают <b>число выполненных действий</b>: цвет проекта для основных задач, голубой для подзадач, фиолетовый для ВУЗа. Повторное открытие учитывается отдельно в показателе выше. События из старой версии без привязки к проекту относятся к «Другому».</p></section>
     <section class="panel activity-panel"><div class="panel-title"><h2>Время работы по направлениям</h2></div>${categoryLegend(byMinute.categories)}<p class="subnote">Шкала слева показывает время; детализация доступна при выборе даты.</p><div class="activity-chart-scroll" tabindex="0" aria-label="Прокручиваемый график времени">${stackedPlot(byMinute,'minutes')}</div>${categoryTotals(byMinute,'minutes')}<p class="subnote">Минуты берутся <b>только из записанных рабочих сессий</b>; галочка задачи не означает автоматически затраченное время. Выбери проект при добавлении рабочей сессии, чтобы видеть его цвет на графике.</p></section>
@@ -284,7 +316,7 @@
     const moveControls=reorder?`<div class="task-move-controls"><button type="button" class="icon-btn task-drag-handle" draggable="true" data-task-drag="${escapeHtml(t.id)}" aria-label="Перетащить задачу" title="Перетащить на компьютере">⠿</button><button type="button" class="icon-btn" data-task-move="${escapeHtml(t.id)}" data-direction="-1" aria-label="Поднять задачу выше" title="Выше">↑</button><button type="button" class="icon-btn" data-task-move="${escapeHtml(t.id)}" data-direction="1" aria-label="Опустить задачу ниже" title="Ниже">↓</button></div>`:'';
     return `<div class="task-card ${t.status==='done'?'done':''}" data-task-id="${escapeHtml(t.id)}" style="border-left:3px solid ${escapeHtml(t.color||project(t.projectId)?.color||'#596479')}">${moveControls}<input type="checkbox" class="check" aria-label="Выполнено: ${escapeHtml(t.title)}" data-check-task="${escapeHtml(t.id)}" ${t.status==='done'?'checked':''}><div class="task-wrap"><div class="row-main"><div class="row-title">${escapeHtml(t.title)}</div><div class="meta-stack">${t.color?`<span class="tag"><i class="color-dot" style="background:${escapeHtml(t.color)}"></i>Цвет задачи</span>`:''}${projectTag(t.projectId)}<span class="tag ${t.priority==='high'?'important':''}">${PRIORITIES[t.priority]}</span><select class="task-status-control" data-task-status="${escapeHtml(t.id)}" aria-label="Статус задачи ${escapeHtml(t.title)}">${optionList(TASK_STATES,t.status)}</select><span class="${overdue?'pill overdue':'row-sub'}">${due}</span></div>
     <div class="subtasks-box ${open?'is-expanded':''}"><button type="button" class="subtasks-toggle disclosure-toggle" data-action="toggle-task-steps" data-id="${escapeHtml(t.id)}" aria-expanded="${open}" aria-label="${open?'Свернуть':'Развернуть'} подзадачи: ${escapeHtml(t.title)}"><span class="disclosure-chevron" aria-hidden="true">▸</span><strong>Подзадачи</strong><span class="disclosure-count">${label}${st.total?' · '+st.pct+'%':''}</span></button>${st.total?`<div class="progress subtask-progress"><span style="width:${st.pct}%"></span></div>`:''}<div class="subtasks-content" ${open?'':'hidden'}>${t.notes?`<div class="row-sub task-expanded-notes">${escapeHtml(t.notes).slice(0,210)}</div>`:''}${steps}<button class="text-button subtask-add" data-action="add-subtask" data-project="${escapeHtml(t.id)}">+ Добавить шаг без срока</button></div></div>
-    </div><div class="task-actions"><button class="icon-btn" data-action="edit-task" data-id="${escapeHtml(t.id)}" title="Редактировать">✎</button><button class="icon-btn" data-action="delete-task" data-id="${escapeHtml(t.id)}" title="Удалить">✕</button></div></div></div>`;
+    </div><div class="task-actions">${t.status==='done'&&!archived(t)?`<button class="btn btn-small archive-task-button" data-action="archive-task" data-id="${escapeHtml(t.id)}" title="Убрать выполненную задачу в архив">↧ Архив</button>`:''}<button class="icon-btn" data-action="edit-task" data-id="${escapeHtml(t.id)}" title="Редактировать">✎</button><button class="icon-btn" data-action="delete-task" data-id="${escapeHtml(t.id)}" title="Удалить">✕</button></div></div></div>`;
   }
   function socialGoals(){const m=today().slice(0,7);return CHANNELS.map(ch=>{const done=data.posts.filter(p=>p.channel===ch&&p.status==='published'&&monthOf(p.date)===m).length,goal=data.goals[ch]||0;return `<div class="social-row"><div class="social-meta"><strong>${escapeHtml(ch)}</strong><span>${done} / ${goal||'без цели'}</span></div><div class="progress"><span style="width:${goal?Math.min(100,Math.round(done/goal*100)):0}%"></span></div></div>`;}).join('');}
   function renderOverviewLessons(){
@@ -296,10 +328,18 @@
       <div class="overview-attendance-count">Посещено ${attended} из ${lessons.length} пар</div>
       ${rows||'<div class="empty">На этот день пар нет. Добавь занятие через журнал ВУЗа.</div>'}`;
   }
+  function renderAttentionPanel(){
+    const limit=iso(shiftDate(new Date(),7));
+    const works=data.academic.filter(w=>!ACADEMIC_DONE.has(w.status)&&(w.status==='debt'||(w.due&&w.due<=limit))).map(w=>({type:'uni',id:w.id,title:w.title,area:'ВУЗ · '+(w.subject||'Предмет'),date:w.due,flag:w.status==='debt'?'Долг':w.due<today()?'Просрочено':'Ближайший срок',next:w.subtasks?.find(st=>!st.done)?.title||w.nextStep||'Проверить готовность к сдаче'}));
+    const tasks=data.tasks.filter(t=>!archived(t)&&t.status==='doing'&&(t.priority==='high'||t.due&&t.due<=limit)).map(t=>({type:'task',id:t.id,title:t.title,area:projectLabel(t.projectId),date:t.due,flag:t.due&&t.due<today()?'Просрочено':t.priority==='high'?'Важная':'Ближайший срок',next:t.subtasks?.find(st=>!st.done)?.title||'Продвинуть задачу'}));
+    const items=[...works,...tasks].sort((a,b)=>(a.date||'9999').localeCompare(b.date||'9999')).slice(0,4);
+    return `<section class="panel attention-panel"><div class="panel-title"><div><h2>Требует внимания</h2><p class="subnote">Ближайшие сроки и важные дела. Остальное не отвлекает.</p></div><span>${items.length} показано</span></div><div class="attention-grid">${items.length?items.map(x=>`<button class="attention-item" data-action="${x.type==='task'?'go-to-task':'focus-uni-work'}" data-id="${escapeHtml(x.id)}"><span class="attention-head"><strong>${escapeHtml(x.title)}</strong><em>${escapeHtml(x.flag)}</em></span><span class="attention-meta">${escapeHtml(x.area)}${x.date?' · '+prettyDate(x.date,true):''}</span><span class="attention-next">↗ ${escapeHtml(x.next)}</span></button>`).join(''):'<p class="subnote">Нет срочных задач. Можно спокойно работать по своему плану.</p>'}</div></section>`;
+  }
   function renderOverview(){const s=stat();const openTasks=orderedTasks(data.tasks.filter(x=>x.status==='doing')).slice(0,5);const upcoming=data.posts.filter(x=>x.status!=='published').sort((a,b)=>(a.date||'9999').localeCompare(b.date||'9999')).slice(0,5);
     return `<div class="hero"><div><div class="eyebrow">ТВОЯ ТВОРЧЕСКАЯ МАСТЕРСКАЯ</div><h1>Идеи, проекты и публикации.<br>Без лишнего шума.</h1><p>Планируй работу, сохраняй идеи и отмечай результат. Не нужно делать всё сразу: достаточно понимать следующий шаг.</p><button class="btn btn-accent" data-action="add-post">+ Запланировать публикацию</button></div><div class="hero-stat"><strong>${s.open}</strong><span>открытых задач</span></div></div>
     <div class="stats-grid"><div class="stat-card"><div class="stat-icon">☑</div><div class="stat-value">${s.open}</div><div class="stat-label">Дел в работе и планах</div></div><div class="stat-card"><div class="stat-icon">▤</div><div class="stat-value">${s.planned}</div><div class="stat-label">Постов в ближайшие 7 дней</div></div><div class="stat-card"><div class="stat-icon">↗</div><div class="stat-value">${s.published}</div><div class="stat-label">Опубликовано за месяц</div></div><div class="stat-card"><div class="stat-icon">▥</div><div class="stat-value">${s.academicDue}</div><div class="stat-label">Долгов и просроченных сдач</div></div></div>
     <div class="activity-preview"><div><strong>Активность за 7 дней</strong><p>Завершено ${periodStats(activitySeries(7)).done} · Пересмотрено ${periodStats(activitySeries(7)).reopened} · ${hoursString(periodStats(activitySeries(7)).minutes)} записанной работы</p></div><button class="btn btn-soft" data-nav="activity">Смотреть график ↗</button></div>
+    ${renderAttentionPanel()}
     <div class="main-grid"><div><div class="panel"><div class="panel-title"><h2>Ближайшие задачи</h2><button class="text-button" data-nav="tasks">Все задачи ↗</button></div>${openTasks.length?openTasks.map(t=>taskRow(t,true)).join(''):'<div class="empty"><span class="empty-icon">✳</span>Задач пока нет. Добавь первый шаг по проекту.</div>'}</div>
     <div class="panel"><div class="panel-title"><h2>В очереди на публикацию</h2><button class="text-button" data-nav="content">Контент-план ↗</button></div>${upcoming.length?upcoming.map(p=>`<div class="list-row"><div class="row-main"><div class="row-title">${escapeHtml(p.title)}</div><div class="row-sub">${escapeHtml(p.channel)} · ${STAGES[p.status]} · ${prettyDate(p.date)}</div></div><button class="icon-btn" data-action="edit-post" data-id="${escapeHtml(p.id)}" title="Редактировать">✎</button></div>`).join(''):'<div class="empty"><span class="empty-icon">▦</span>Идей для публикаций ещё нет.</div>'}</div></div>
     <div><div class="panel"><div class="panel-title"><h2>Публикации в этом месяце</h2><button class="text-button" data-nav="settings">Изменить цели ↗</button></div>${socialGoals()}<div class="subnote">Считаются посты со статусом «Опубликовано» и датой этого месяца.</div></div><div class="panel overview-lessons"><div class="panel-title"><h2>ВУЗ · пары на день</h2><button class="text-button" data-nav="university">Открыть журнал ↗</button></div>
@@ -331,12 +371,21 @@
       <div class="panel"><div class="panel-title"><h2>Текущая неделя</h2><span class="subnote">Даты и дни недели</span></div><div class="habit-table-wrap"><table class="habit-table"><thead><tr><th>Привычка</th>${week.map(day=>`<th class="${day===today()?'habit-today':''}">${escapeHtml(dateObj(day).toLocaleDateString('ru-RU',{weekday:'short'}))}<small>${day.slice(8)}</small></th>`).join('')}<th>Всего</th><th>Действия</th></tr></thead><tbody>${data.habits.map(h=>`<tr><td><span class="color-dot" style="background:${escapeHtml(h.color)}"></span> ${escapeHtml(h.icon)} ${escapeHtml(h.title)}</td>${week.map(day=>`<td><span class="habit-mark ${hasHabitCheck(h.id,day)?'yes':'no'}">${day>today()?'·':hasHabitCheck(h.id,day)?'✓':'–'}</span></td>`).join('')}<td>${habitCounter(h)}</td><td><button class="icon-btn" data-action="edit-habit" data-id="${escapeHtml(h.id)}" title="Редактировать">✎</button><button class="icon-btn" data-action="delete-habit" data-id="${escapeHtml(h.id)}" title="Удалить">✕</button></td></tr>`).join('')||'<tr><td colspan="10">Пока нет привычек</td></tr>'}</tbody></table></div><p class="subnote">Отметка сохраняется с местной календарной датой устройства. Время телефона должно быть настроено правильно. После изменения часового пояса ориентиром становится дата устройства.</p></div>`;
   }
   function renderTasks(){
-    const list=visibleTasks();
+    const full=visibleTasks();
+    const doneMode=taskFilter==='done'&&!query;
+    const list=doneMode&&!showAllFinished?full.slice(0,8):full;
     const controls=`<select id="task-sort" aria-label="Сортировать задачи">${Object.entries(TASK_SORTS).map(([value,label])=>`<option value="${value}" ${data.taskSort===value?'selected':''}>${label}</option>`).join('')}</select>`;
-    const hint=data.taskSort==='manual'&&!query?'Порядок можно изменить: перетащи за значок ⠿ или нажми ↑ ↓. На телефоне используй стрелки.':data.taskSort==='manual'?'Чтобы менять порядок вручную, очисти поиск.':'Для ручного перетаскивания выбери «Мой порядок».';
-    return `${heading('ПРОЕКТЫ И ПОВСЕДНЕВНОСТЬ','Задачи','«В работе», «Запланировано» и «Выполнено» не смешиваются.','<button class="btn btn-accent" data-action="add-task">+ Добавить задачу</button>')}
+    const hint=taskFilter==='archive'?'Архив хранит всю задачу, её шаги и связь с проектом. Восстановление не меняет статистику.':data.taskSort==='manual'&&!query?'Меняй порядок стрелками ↑ ↓ или перетаскиванием за ⠿.':'Для ручного порядка выбери «Мой порядок» и очисти поиск.';
+    const counts={doing:data.tasks.filter(t=>!archived(t)&&t.status==='doing').length,todo:data.tasks.filter(t=>!archived(t)&&t.status==='todo').length,done:data.tasks.filter(t=>!archived(t)&&t.status==='done').length,all:data.tasks.filter(t=>!archived(t)&&t.status!=='done').length,archive:archivedCount()};
+    const doneIds=data.tasks.filter(t=>t.status==='done'&&!archived(t)).map(t=>t.id);
+    return `${heading('ПОРЯДОК БЕЗ ЛИШНЕГО','Задачи','Рабочие задачи на виду. Завершённые можно убрать в архив, сохранив прогресс и историю.','<button class="btn btn-accent" data-action="add-task">+ Добавить задачу</button>')}
       ${renderHabitsWidget()}
-      <div class="toolbar"><select id="task-filter" aria-label="Фильтр задач">${Object.entries({doing:'В работе',todo:'Запланировано',done:'Выполненные',all:'Все задачи'}).map(([v,l])=>`<option value="${v}" ${taskFilter===v?'selected':''}>${l} (${v==='all'?data.tasks.length:data.tasks.filter(t=>t.status===v).length})</option>`).join('')}</select>${controls}<input class="grow" id="task-search" placeholder="Поиск по задачам" value="${escapeHtml(query)}" aria-label="Поиск по задачам"><span style="color:var(--muted);font-size:12px">Найдено: ${list.length}</span></div><p class="task-order-hint">${hint}</p><div class="task-list">${list.length?list.map(t=>taskRow(t)).join(''):'<div class="empty">В этой категории пока ничего нет. Изменить статус можно в редакторе задачи.</div>'}</div>`;
+      <div class="task-compact-overview"><div><b>${counts.doing}</b><span>в работе</span></div><div><b>${counts.todo}</b><span>запланировано</span></div><div><b>${counts.done}</b><span>завершено на виду</span></div><div><b>${counts.archive}</b><span>в архиве</span></div></div>
+      <div class="toolbar"><select id="task-filter" aria-label="Фильтр задач">${Object.entries({doing:'В работе',todo:'Запланировано',done:'Выполненные',all:'В работе + планы',archive:'Архив'}).map(([v,l])=>`<option value="${v}" ${taskFilter===v?'selected':''}>${l} (${counts[v]})</option>`).join('')}</select>${taskFilter==='archive'?'':controls}<input class="grow" id="task-search" placeholder="${taskFilter==='archive'?'Найти в архиве':'Поиск по задачам'}" value="${escapeHtml(query)}" aria-label="Поиск по задачам"><span class="task-found">Найдено: ${full.length}</span></div>
+      <div class="task-help-row"><p class="task-order-hint">${hint}</p>${doneIds.length&&taskFilter!=='archive'?`<button class="btn btn-small archive-all-action" data-action="archive-all-completed">↧ Архивировать выполненные (${doneIds.length})</button>`:''}</div>
+      ${taskFilter==='archive'?`<section class="panel archive-panel"><div class="panel-title"><h2>Архив выполненного</h2><span>${counts.archive} сохранено</span></div><p class="subnote">Это не удаление: проекты продолжают учитывать выполненные задачи. Нажми «Вернуть», чтобы снова видеть задачу среди выполненных.</p>${full.length?full.map(archivePreview).join(''):'<div class="empty">Здесь пока пусто. Завершённые задачи можно перенести сюда вручную.</div>'}</section>`:
+      `<div class="task-list">${list.length?list.map(t=>taskRow(t)).join(''):'<div class="empty">В этой категории пока ничего нет.</div>'}</div>${doneMode&&full.length>list.length?`<button class="btn task-show-more" data-action="toggle-all-finished">Показать остальные выполненные · ещё ${full.length-list.length}</button>`:''}${doneMode&&showAllFinished&&full.length>8?'<button class="btn task-show-more" data-action="toggle-all-finished">Свернуть список выполненных</button>':''}`}
+      ${taskFilter!=='archive'&&counts.archive?`<button class="archive-shortcut" data-action="show-task-archive"><span>▣ Архив завершённых</span><strong>${counts.archive} задач · открыть ↗</strong></button>`:''}`;
   }
   function renderContent(){return `${heading('КОНТЕНТ-КАЛЕНДАРЬ','Публикации','Перетаскивать карточки не требуется: меняй стадию внизу каждого поста. Сюда можно складывать даже сырые идеи.','<button class="btn btn-accent" data-action="add-post">+ Новая публикация</button>')}<div class="kanban">${Object.entries(STAGES).map(([stage,label])=>{const list=data.posts.filter(p=>p.status===stage).sort((a,b)=>(a.date||'9999').localeCompare(b.date||'9999'));return `<section class="lane"><div class="lane-header"><h3>${label}</h3><span>${list.length}</span></div>${list.map(p=>`<article class="post-card"><div class="post-channel">${escapeHtml(p.channel)} · ${escapeHtml(p.format)}</div><div class="post-title">${escapeHtml(p.title)}</div><div class="post-sub">${prettyDate(p.date)} · ${escapeHtml(projectLabel(p.projectId))}</div>${p.notes?`<div class="post-note">${escapeHtml(p.notes)}</div>`:''}${p.link?`<div style="margin-top:7px"><a href="${escapeHtml(p.link)}" target="_blank" rel="noopener noreferrer" style="font-size:11px">Открыть публикацию ↗</a></div>`:''}<div class="post-controls"><select data-post-stage="${escapeHtml(p.id)}" aria-label="Статус поста ${escapeHtml(p.title)}">${Object.entries(STAGES).map(([v,l])=>`<option value="${v}" ${stage===v?'selected':''}>${l}</option>`).join('')}</select><button class="icon-btn" data-action="edit-post" data-id="${escapeHtml(p.id)}" title="Изменить">✎</button><button class="icon-btn" data-action="copy-post" data-id="${escapeHtml(p.id)}" title="Создать копию">⧉</button><button class="icon-btn" data-action="delete-post" data-id="${escapeHtml(p.id)}" title="Удалить">✕</button></div></article>`).join('')||'<div style="font-size:12px;color:#758293;text-align:center;padding:18px 5px">Пока пусто</div>'}</section>`;}).join('')}</div>`;}
   function studyMinutes(x){return (x.sessions||[]).reduce((sum,y)=>sum+n(y.minutes),0);}
@@ -535,20 +584,21 @@
   }
   function projectTaskItem(t){
     const st=subtaskStats(t);
-    return `<div class="project-task-row"><input type="checkbox" class="check" data-check-task="${escapeHtml(t.id)}" ${t.status==='done'?'checked':''} aria-label="Выполнено: ${escapeHtml(t.title)}"><div class="project-task-text"><div class="row-title ${t.status==='done'?'is-done':''}">${escapeHtml(t.title)}</div><div class="row-sub">${TASK_STATES[t.status]} · ${t.due?prettyDate(t.due,true):'Без срока'} · ${PRIORITIES[t.priority]}${st.total?` · ${st.done}/${st.total} шагов`:''}</div></div><div class="project-task-actions"><select class="task-status-control" data-task-status="${escapeHtml(t.id)}" aria-label="Статус задачи ${escapeHtml(t.title)}">${optionList(TASK_STATES,t.status)}</select><button class="btn btn-small" data-action="go-to-task" data-id="${escapeHtml(t.id)}" aria-label="Открыть задачу ${escapeHtml(t.title)}">Открыть ↗</button><button class="icon-btn" data-action="edit-task" data-id="${escapeHtml(t.id)}" aria-label="Редактировать задачу ${escapeHtml(t.title)}" title="Редактировать">✎</button></div></div>`;
+    return `<div class="project-task-row"><input type="checkbox" class="check" data-check-task="${escapeHtml(t.id)}" ${t.status==='done'?'checked':''} aria-label="Выполнено: ${escapeHtml(t.title)}"><div class="project-task-text"><div class="row-title ${t.status==='done'?'is-done':''}">${escapeHtml(t.title)}</div><div class="row-sub">${TASK_STATES[t.status]} · ${t.due?prettyDate(t.due,true):'Без срока'} · ${PRIORITIES[t.priority]}${st.total?` · ${st.done}/${st.total} шагов`:''}</div></div><div class="project-task-actions">${t.status==='done'&&!archived(t)?`<button class="btn btn-small" data-action="archive-task" data-id="${escapeHtml(t.id)}" aria-label="Архивировать ${escapeHtml(t.title)}">↧ Архив</button>`:''}<select class="task-status-control" data-task-status="${escapeHtml(t.id)}" aria-label="Статус задачи ${escapeHtml(t.title)}">${optionList(TASK_STATES,t.status)}</select><button class="btn btn-small" data-action="go-to-task" data-id="${escapeHtml(t.id)}" aria-label="Открыть задачу ${escapeHtml(t.title)}">Открыть ↗</button><button class="icon-btn" data-action="edit-task" data-id="${escapeHtml(t.id)}" aria-label="Редактировать задачу ${escapeHtml(t.title)}" title="Редактировать">✎</button></div></div>`;
   }
   function renderProjectDetail(p){
     const tasks=orderedTasks(data.tasks.filter(t=>t.projectId===p.id));
     const active=tasks.filter(t=>t.status==='doing'),planned=tasks.filter(t=>t.status==='todo'),done=tasks.filter(t=>t.status==='done');
     const posts=data.posts.filter(t=>t.projectId===p.id);
     const percent=tasks.length?Math.round(done.length/tasks.length*100):0;
+    const archivedDone=done.filter(archived),freshDone=done.filter(t=>!archived(t));
+    const group=(name,items,note,open=false)=>`<details class="panel project-section v3-fold" ${open?'open':''}><summary class="v3-fold-summary"><span class="v3-fold-caret" aria-hidden="true">▸</span><strong>${name}</strong><span class="project-section-count">${items.length}</span><small>${note}</small></summary><div class="v3-fold-body">${items.length?items.map(projectTaskItem).join(''):'<div class="empty">Список пуст.</div>'}</div></details>`;
     return `<button class="btn btn-small project-back" data-action="back-projects">← Все проекты</button>
-      ${heading('КАРТОЧКА ПРОЕКТА',escapeHtml(p.name),'Все связанные задачи доступны здесь. Можно изменить статус, редактировать запись или перейти к полной карточке задачи.',`<button class="btn btn-accent" data-action="add-task" data-project="${escapeHtml(p.id)}">+ Задача для проекта</button><button class="btn" data-action="edit-project" data-id="${escapeHtml(p.id)}">Изменить проект</button>`)}
-      <div class="project-detail-summary"><div class="stat-card"><div class="stat-icon">☑</div><div class="stat-value">${active.length}</div><div class="stat-label">В работе</div></div><div class="stat-card"><div class="stat-icon">◷</div><div class="stat-value">${planned.length}</div><div class="stat-label">Запланировано</div></div><div class="stat-card"><div class="stat-icon">✓</div><div class="stat-value">${done.length}</div><div class="stat-label">Выполнено</div></div><div class="stat-card"><div class="stat-icon">▤</div><div class="stat-value">${posts.length}</div><div class="stat-label">Публикаций</div></div></div>
-      <div class="panel project-progress-panel"><div class="social-meta"><strong>Готовность задач проекта</strong><span>${done.length} / ${tasks.length} · ${percent}%</span></div><div class="progress"><span style="width:${percent}%"></span></div><div class="subnote">Считаются завершённые основные задачи. Если задача разбита на шаги, их прогресс виден в её карточке.</div></div>
-      <div class="project-task-sections"><section class="panel project-section"><div class="panel-title"><h2>В работе</h2><span class="project-section-count">${active.length}</span></div>${active.length?active.map(projectTaskItem).join(''):'<div class="empty">Активных задач пока нет.</div>'}</section>
-      <section class="panel project-section"><div class="panel-title"><h2>Запланировано</h2><span class="project-section-count">${planned.length}</span></div>${planned.length?planned.map(projectTaskItem).join(''):'<div class="empty">Запланированных задач нет.</div>'}</section>
-      <section class="panel project-section"><div class="panel-title"><h2>Выполнено</h2><span class="project-section-count">${done.length}</span></div>${done.length?done.map(projectTaskItem).join(''):'<div class="empty">Выполненных задач пока нет.</div>'}</section></div>`;
+      ${heading('КАРТОЧКА ПРОЕКТА',escapeHtml(p.name),'Списки свернуты. Открывай только нужное, прогресс виден постоянно.',`<button class="btn btn-accent" data-action="add-task" data-project="${escapeHtml(p.id)}">+ Задача</button><button class="btn" data-action="edit-project" data-id="${escapeHtml(p.id)}">Изменить проект</button>`)}
+      <div class="project-detail-summary"><div class="stat-card"><div class="stat-icon">☑</div><div class="stat-value">${active.length}</div><div class="stat-label">В работе</div></div><div class="stat-card"><div class="stat-icon">◷</div><div class="stat-value">${planned.length}</div><div class="stat-label">Запланировано</div></div><div class="stat-card"><div class="stat-icon">✓</div><div class="stat-value">${done.length}</div><div class="stat-label">Выполнено (включая архив)</div></div><div class="stat-card"><div class="stat-icon">▣</div><div class="stat-value">${archivedDone.length}</div><div class="stat-label">В архиве</div></div></div>
+      <div class="panel project-progress-panel"><div class="social-meta"><strong>Готовность задач проекта</strong><span>${done.length} / ${tasks.length} · ${percent}%</span></div><div class="progress"><span style="width:${percent}%"></span></div><div class="subnote">Архивные задачи входят в расчёт прогресса. Ничего не исчезает из статистики.</div></div>
+      <div class="project-task-sections">${group('В работе',active,'Текущие действия')}${group('Запланировано',planned,'Следующие шаги')}${group('Выполнено',freshDone,`Скрыто в архиве: ${archivedDone.length}`)}
+      <details class="panel project-section v3-fold"><summary class="v3-fold-summary"><span class="v3-fold-caret" aria-hidden="true">▸</span><strong>Архив проекта</strong><span class="project-section-count">${archivedDone.length}</span><small>Можно восстановить</small></summary><div class="v3-fold-body">${archivedDone.length?archivedDone.map(archivePreview).join(''):'<div class="empty">Архив пока пуст.</div>'}</div></details></div>`;
   }
   function sortedProjects(){
     const rows=[...data.projects];
@@ -624,7 +674,7 @@
     editor.showModal();setTimeout(()=>f.querySelector('input')?.focus(),50);
   }
   function saveEntry(){const fd=new FormData(form);const id=editMode.id??safeId();const txt=k=>String(fd.get(k)||'').trim();const type=editMode.type;
-    if(type==='task'){const title=txt('title');if(!title)return;const prev=data.tasks.find(x=>x.id===id);const entry={id,title:title.slice(0,300),projectId:txt('projectId'),due:hasDate(txt('due'))?txt('due'):'',priority:PRIORITIES[txt('priority')]?txt('priority'):'normal',status:TASK_STATES[txt('status')]?txt('status'):'todo',lastOpenStatus:txt('status')==='done'?(prev?.status==='done'?(prev.lastOpenStatus||'doing'):(prev?.status||'doing')):txt('status'),color:fd.has('customColor')?window.MasterskayaAnalytics.color(txt('color')):'',notes:txt('notes').slice(0,10000),subtasks:prev?.subtasks||[]};transition('task',title,prev?.status==='done',entry.status==='done',entry);if(prev)upsert(data.tasks,entry);else data.tasks.unshift(entry);} 
+    if(type==='task'){const title=txt('title');if(!title)return;const prev=data.tasks.find(x=>x.id===id);const entry={id,title:title.slice(0,300),projectId:txt('projectId'),due:hasDate(txt('due'))?txt('due'):'',priority:PRIORITIES[txt('priority')]?txt('priority'):'normal',status:TASK_STATES[txt('status')]?txt('status'):'todo',lastOpenStatus:txt('status')==='done'?(prev?.status==='done'?(prev.lastOpenStatus||'doing'):(prev?.status||'doing')):txt('status'),color:fd.has('customColor')?window.MasterskayaAnalytics.color(txt('color')):'',notes:txt('notes').slice(0,10000),subtasks:prev?.subtasks||[],archivedAt:txt('status')==='done'?(prev?.archivedAt||''):''};transition('task',title,prev?.status==='done',entry.status==='done',entry);if(prev)upsert(data.tasks,entry);else data.tasks.unshift(entry);} 
     if(type==='subtask'){const parent=data.tasks.find(t=>t.id===editMode.parentId);const title=txt('title');if(!parent||!title)return;const old=parent.subtasks.find(x=>x.id===id);upsert(parent.subtasks,{id,title:title.slice(0,300),done:old?.done||false});}
     if(type==='work'){const prev=data.workSessions.find(x=>x.id===id);const entry={id,date:hasDate(txt('date'))?txt('date'):today(),minutes:Math.max(1,Math.min(1440,Math.floor(n(txt('minutes'))||1))),area:WORK_AREAS.includes(txt('area'))?txt('area'):'Другое',projectId:txt('projectId'),note:txt('note').slice(0,1000)};upsert(data.workSessions,entry);}
 
@@ -792,6 +842,19 @@
       case 'open-project':selectedProjectId=id;page='projects';window.scrollTo({top:0,behavior:'instant'});render();break;
       case 'back-projects':selectedProjectId=null;render();break;
       case 'go-to-task':goToTask(id);break;
+      case 'archive-task':archiveTasks([id]);break;
+      case 'restore-task':archiveTasks([id],true);break;
+      case 'archive-all-completed':{
+        const ids=data.tasks.filter(t=>t.status==='done'&&!archived(t)).map(t=>t.id);
+        if(ids.length&&confirm(`Перенести ${ids.length} завершённых задач в архив? Они останутся в статистике проектов, активности и JSON-копиях.`))archiveTasks(ids);
+        break;
+      }
+      case 'show-task-archive':page='tasks';taskFilter='archive';query='';render();break;
+      case 'toggle-all-finished':showAllFinished=!showAllFinished;render();break;
+      case 'toggle-archive-preview':if(expandedTaskSteps.has(id))expandedTaskSteps.delete(id);else expandedTaskSteps.add(id);render();break;
+      case 'focus-uni-work':page='university';universityTab='works';expandedUniversityWorks.add(id);render();{
+        const card=[...app.querySelectorAll('[data-uni-work-id]')].find(el=>el.dataset.uniWorkId===id);card?.scrollIntoView({behavior:'smooth',block:'center'});
+      }break;
       case 'add-task':openEditor('task',null,p);break;case 'add-post':openEditor('post',null,p);break;case 'add-project':openEditor('project');break;
       case 'edit-task':openEditor('task',id);break;case 'edit-post':openEditor('post',id);break;case 'edit-project':openEditor('project',id);break;
       case 'delete-task':remove('tasks',id);break;case 'delete-post':remove('posts',id);break;case 'delete-project':remove('projects',id);break;
@@ -805,8 +868,8 @@
     }
   });
   document.addEventListener('change',e=>{
-    if(e.target.matches('[data-task-status]')){const t=data.tasks.find(x=>x.id===e.target.dataset.taskStatus);if(t&&TASK_STATES[e.target.value]){const before=t.status==='done';if(t.status!=='done')t.lastOpenStatus=t.status;t.status=e.target.value;if(t.status!=='done')t.lastOpenStatus=t.status;transition('task',t.title,before,t.status==='done',t);save();render();toast('Статус задачи обновлён');}}
-    if(e.target.matches('[data-check-task]')){const t=data.tasks.find(x=>x.id===e.target.dataset.checkTask);if(t){const before=t.status==='done';if(e.target.checked){t.lastOpenStatus=t.status==='todo'?'todo':'doing';t.status='done';}else t.status=t.lastOpenStatus||'doing';transition('task',t.title,before,t.status==='done',t);save();render();}}
+    if(e.target.matches('[data-task-status]')){const t=data.tasks.find(x=>x.id===e.target.dataset.taskStatus);if(t&&TASK_STATES[e.target.value]){const before=t.status==='done';if(t.status!=='done')t.lastOpenStatus=t.status;t.status=e.target.value;if(t.status!=='done'){t.lastOpenStatus=t.status;t.archivedAt='';}transition('task',t.title,before,t.status==='done',t);save();render();toast('Статус задачи обновлён');}}
+    if(e.target.matches('[data-check-task]')){const t=data.tasks.find(x=>x.id===e.target.dataset.checkTask);if(t){const before=t.status==='done';if(e.target.checked){t.lastOpenStatus=t.status==='todo'?'todo':'doing';t.status='done';}else{t.status=t.lastOpenStatus||'doing';t.archivedAt='';}transition('task',t.title,before,t.status==='done',t);save();render();}}
     if(e.target.matches('[data-check-subtask]')){const parent=data.tasks.find(t=>t.id===e.target.dataset.parent);const sub=parent?.subtasks.find(st=>st.id===e.target.dataset.checkSubtask);if(sub){const before=sub.done;sub.done=e.target.checked;transition('subtask',sub.title,before,sub.done,parent);save();render();}}
     if(e.target.matches('[data-uni-step]')){const work=data.academic.find(x=>x.id===e.target.dataset.work),step=work?.subtasks.find(x=>x.id===e.target.dataset.uniStep);if(step){const prev=step.done;step.done=e.target.checked;transition('subtask',`ВУЗ · ${work.subject} · ${work.title} · ${step.title}`,prev,step.done,{color:'#96accb'});save();render();}}
     if(e.target.matches('[data-uni-work-check]')){const work=data.academic.find(x=>x.id===e.target.dataset.uniWorkCheck);if(work){const was=work.status==='passed';work.status=e.target.checked?'passed':'progress';transition('academic',work.title,was,work.status==='passed');save();render();}}
@@ -814,7 +877,7 @@
     if(e.target.matches('#project-sort')){if(PROJECT_SORTS[e.target.value]){projectSort=e.target.value;data.projectSort=projectSort;save();render();}}
     if(e.target.matches('#activity-day-picker')){if(hasDate(e.target.value)&&e.target.value<=today()){activitySelectedDay=e.target.value;render();}}
     if(e.target.matches('#task-sort')){if(TASK_SORTS[e.target.value]){data.taskSort=e.target.value;save();render();}}
-    if(e.target.matches('#task-filter')){taskFilter=e.target.value;render();}
+    if(e.target.matches('#task-filter')){taskFilter=e.target.value;showAllFinished=false;render();}
     if(e.target.matches('#uni-week-anchor')){data.universityWeekAnchor=hasDate(e.target.value)?e.target.value:'';save();render();toast('Первая нечётная неделя сохранена');}
     if(e.target.matches('[data-attendance-check]')){
       const el=e.target,record=data.attendance.find(x=>x.id===el.dataset.attendanceId);
